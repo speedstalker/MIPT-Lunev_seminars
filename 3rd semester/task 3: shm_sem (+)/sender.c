@@ -24,11 +24,11 @@
 
 int main (int argc, char* argv[])
 {
-key_t snd_sem_key = 0, shm_key = 0, shm_alive_sem_key = 0, ready_sem_key = 0;
+key_t snd_sem_key = 0, shm_key = 0, shm_alive_sem_key = 0;
 char  *file_name = NULL, *shm_char_p = NULL;
 int   ret_val = 0;
 int   numb_of_read_bytes = 0, file_read_desc = 0;
-int   snd_sem_id = 0, shm_id = 0, shm_alive_sem_id = 0, ready_sem_id = 0;
+int   snd_sem_id = 0, shm_id = 0, shm_alive_sem_id = 0;
 
 struct sembuf sops[3];
 
@@ -113,11 +113,19 @@ if ((shm_char_p = (char*)shmat (shm_id, NULL, 0)) == (char*)(-1))
 //              2 - is  sender    alive/dead?
 //              3 - is  receiver  alive/dead?
 //                      (0 - alive, 1 - dead)
+//
+//              4 - is sender    inside or below r/w cycle
+//              5 - is receiver  inside or below r/w cycle
+//                      (0 - yes, 1 - not yet)
+//
+//              6 - is sender    ready to start r/w cycle
+//              7 - is receiver  ready to start r/w cycle
+//                      (0 - ready, 1 - not yet)
 //------------------------------------------------------------------------------
 if ((shm_alive_sem_key = ftok (FTOK_PATH, 'X')) == -1)
         HANDLE_ERROR("ftok shm_alive_sem_key");
 
-shm_alive_sem_id = semget (shm_alive_sem_key, 4, IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
+shm_alive_sem_id = semget (shm_alive_sem_key, 8, IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
 if (shm_alive_sem_id >= 0)      // sender created set first time and got it first
         {
         sops[0].sem_num = 2;
@@ -130,11 +138,33 @@ if (shm_alive_sem_id >= 0)      // sender created set first time and got it firs
 
         if (semop (shm_alive_sem_id, sops, 2))
                 HANDLE_ERROR("shm_alive_sem init semop");
+
+        sops[0].sem_num = 4;
+        sops[0].sem_op  = 1;
+        sops[0].sem_flg = 0;
+
+        sops[1].sem_num = 5;
+        sops[1].sem_op  = 1;
+        sops[1].sem_flg = 0;
+
+        if (semop (shm_alive_sem_id, sops, 2))
+                HANDLE_ERROR("shm_alive_sem init in_cycle? semop");
+
+        sops[0].sem_num = 6;
+        sops[0].sem_op  = 1;
+        sops[0].sem_flg = 0;
+
+        sops[1].sem_num = 7;
+        sops[1].sem_op  = 1;
+        sops[1].sem_flg = 0;
+
+        if (semop (shm_alive_sem_id, sops, 2))
+                HANDLE_ERROR("shm_alive_sem init ready semop");
         }
 
 else if (errno == EEXIST)       // the set was somehow created before we came here
         {
-        shm_alive_sem_id = semget (shm_alive_sem_key, 4, IPC_CREAT | S_IRUSR | S_IWUSR);
+        shm_alive_sem_id = semget (shm_alive_sem_key, 8, IPC_CREAT | S_IRUSR | S_IWUSR);
 
         sops[0].sem_num = 2;
         sops[0].sem_op  = 0;
@@ -195,54 +225,30 @@ sops[0].sem_flg = 0;
 if (semop (shm_alive_sem_id, sops, 1))
         HANDLE_ERROR("shm_alive_sem semop init before read/write");
 //------------------------------------------------------------------------------
-// Waiting for the partner before r/w
-//------------------------------------------------------------------------------
-// Description of semaphores in this set:
-//
-// sem_num:     0 - is sender    ready to start r/w cycle
-//              1 - is receiver  ready to start r/w cycle
-//                      (0 - ready, 1 - not yet)
-//------------------------------------------------------------------------------
-if ((ready_sem_key = ftok (FTOK_PATH, 'W')) == -1)
-        HANDLE_ERROR("ftok ready_sem_key");
-
-ready_sem_id = semget (ready_sem_key, 2, IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
-if (ready_sem_id >= 0)      // sender created set first time and got it first
-        {
-        sops[0].sem_num = 0;
-        sops[0].sem_op  = 1;
-        sops[0].sem_flg = 0;
-
-        sops[1].sem_num = 1;
-        sops[1].sem_op  = 1;
-        sops[1].sem_flg = 0;
-
-        if (semop (ready_sem_id, sops, 2))
-                HANDLE_ERROR("ready_sem init semop");
-        }
-
-else if (errno == EEXIST)       // the set had been created somehow, don't worry,
-        {                       // just get it, everything will be OK
-        if ((ready_sem_id = semget (ready_sem_key, 2, IPC_CREAT | S_IRUSR | S_IWUSR)) == -1)
-                HANDLE_ERROR("ready_sem EEXIST semget");
-        }
-
-else
-        HANDLE_ERROR("ready_sem semget");
-//------------------------------------------------------------------------------
-sops[0].sem_num =  0;   // decrease my semaphore til 0...
+sops[0].sem_num =  7;   // decrease partner's semaphore til 0...
 sops[0].sem_op  = -1;
 sops[0].sem_flg = SEM_UNDO;
 
-if (semop (ready_sem_id, sops, 1))
-        HANDLE_ERROR("ready_sem decrease before r/w semop");
+if (semop (shm_alive_sem_id, sops, 1))
+        HANDLE_ERROR("shm_alive_sem_id decrease before r/w semop");
 //------------------------------------------------------------------------------
-sops[0].sem_num = 1;    // ... and wait for partner to do the same
+sops[0].sem_num = 6;    // ... and wait for partner to do the same with my sem
 sops[0].sem_op  = 0;
 sops[0].sem_flg = 0;
 
-if (semop (ready_sem_id, sops, 1))
-        HANDLE_ERROR("ready_sem wait before r/w semop");
+sops[1].sem_num =  4;    // decrease my semaphore to show that I'm in r/w cycle
+sops[1].sem_op  = -1;
+sops[1].sem_flg = SEM_UNDO;
+
+if (semop (shm_alive_sem_id, sops, 2))
+        HANDLE_ERROR("shm_alive_sem_id decrease and r/w semop");
+//------------------------------------------------------------------------------
+sops[0].sem_num = 7;    // increase partner's sem to avoid continuing r/w cycle,
+sops[0].sem_op  = 1;    // after relaunch of partner, when I'm reading/writing
+sops[0].sem_flg = SEM_UNDO;
+
+if (semop (shm_alive_sem_id, sops, 1))
+        HANDLE_ERROR("shm_alive_sem_id increase before r/w semop");
 //------------------------------------------------------------------------------
 // W/R cycle
 //------------------------------------------------------------------------------
@@ -253,11 +259,15 @@ while (numb_of_read_bytes > 0)
         sops[0].sem_op  = 0;
         sops[0].sem_flg = IPC_NOWAIT;
 
-        sops[1].sem_num =  0;
-        sops[1].sem_op  = -1;
-        sops[1].sem_flg =  0;
+        sops[1].sem_num = 5;
+        sops[1].sem_op  = 0;
+        sops[1].sem_flg = IPC_NOWAIT;
 
-        if (semop (shm_alive_sem_id, sops, 2))
+        sops[2].sem_num =  0;
+        sops[2].sem_op  = -1;
+        sops[2].sem_flg =  0;
+
+        if (semop (shm_alive_sem_id, sops, 3))
                 {
                 if (errno == EAGAIN)
                         break;  // printf ("\nPartner exited.\n");
@@ -269,12 +279,25 @@ while (numb_of_read_bytes > 0)
                 HANDLE_ERROR("read");
         shm_char_p[numb_of_read_bytes] = '\0';
 
-        sops[0].sem_num = 1;
-        sops[0].sem_op  = 1;
-        sops[0].sem_flg = 0;
+        sops[0].sem_num = 3;
+        sops[0].sem_op  = 0;
+        sops[0].sem_flg = IPC_NOWAIT;
 
-        if (semop (shm_alive_sem_id, sops, 1))
-                HANDLE_ERROR("snd write semop");
+        sops[1].sem_num = 5;
+        sops[1].sem_op  = 0;
+        sops[1].sem_flg = IPC_NOWAIT;
+
+        sops[2].sem_num = 1;
+        sops[2].sem_op  = 1;
+        sops[2].sem_flg = 0;
+
+        if (semop (shm_alive_sem_id, sops, 3))
+                {
+                if (errno == EAGAIN)
+                        break;  // printf ("\nPartner exited.\n");
+                else
+                        HANDLE_ERROR("snd write semop");
+                }
         }
 //------------------------------------------------------------------------------
 
