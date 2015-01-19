@@ -22,6 +22,7 @@ int main (int argc, char* argv[])
 {
 key_t sem_key = 0, shm_key = 0;
 char  *shm_char_p = NULL;
+int   ret_val = 0;
 int   numb_of_written_bytes = 0;
 int   sem_id = 0, shm_id = 0;
 
@@ -76,6 +77,20 @@ if ((shm_id = shmget (shm_key, SHM_SIZE, IPC_CREAT | S_IRUSR | S_IWUSR)) == -1)
 
 if ((shm_char_p = (char*)shmat (shm_id, NULL, SHM_RDONLY)) == (char*)(-1))
         HANDLE_ERROR("shmat");
+//------------------------------------------------------------------------------
+// Clear 3rd(r/w) semaphore if its value != 0 due to last launches of programs
+//------------------------------------------------------------------------------
+ret_val = 0;
+while (ret_val == 0)
+        {
+        sops[0].sem_num =  3;
+        sops[0].sem_op  = -1;
+        sops[0].sem_flg = IPC_NOWAIT;
+
+        if ((ret_val = semop (sem_id, sops, 1)))
+                if (errno != EAGAIN)
+                        HANDLE_ERROR("clear receiver's r/w sem semop");
+        }
 //------------------------------------------------------------------------------
 
 
@@ -177,7 +192,7 @@ while (numb_of_written_bytes > 0)
 
         sops[4].sem_num =  2;    // r/w sem
         sops[4].sem_op  =  1;
-        sops[4].sem_flg = SEM_UNDO;
+        sops[4].sem_flg =  0;   //SEM_UNDO;
 
         if (semop (sem_id, sops, 5))
                 {
