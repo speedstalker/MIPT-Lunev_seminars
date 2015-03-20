@@ -1,6 +1,7 @@
 #ifndef __LIST_H_INCLUDED
 #define __LIST_H_INCLUDED
 
+#include <stdio.h>      // just for 'NULL'
 
 #define offsetof(type, member) ((size_t) &((type *)0)->member)
 
@@ -49,11 +50,24 @@ static inline void _list_add (list_node_t* new,
         }
 
 // add a new element before the specified head (like to the tail of list)
-static inline void _list_add_tail (list_node_t* new,
-                                   list_node_t* head)
+static inline void _list_add_tail (list_node_t* new, list_node_t* head)
         {
         _list_add (new, head->prev, head);
         }
+
+static inline void _list_del (list_node_t* prev, list_node_t* next)
+        {
+        prev->next = next;
+        next->prev = prev;
+        }
+
+static inline void _list_del_entry (list_node_t* entry)
+        {
+        _list_del (entry->prev, entry->next);
+        entry->prev = NULL;
+        entry->next = NULL;
+        }
+
 //==============================================================================
 
 

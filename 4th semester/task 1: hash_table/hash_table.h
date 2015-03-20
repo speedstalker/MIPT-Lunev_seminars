@@ -17,7 +17,7 @@ int Hash_table_construct (hash_table_ptr* hash_table, size_t hash_table_size, ha
 int Hash_table_destruct  (hash_table_ptr* hash_table);
 
 int Hash_table_add_elem    (hash_table_ptr hash_table, const hash_key_t* hash_key, size_t hash_key_size,
-                                                  const hash_entry_t* entry_to_add, size_t entry_size);
+                                                       const hash_entry_t* entry_to_add, size_t entry_size);
 int Hash_table_remove_elem (hash_table_ptr hash_table, const hash_key_t* hash_key, size_t hash_key_size);
 
 //  find! is_elem_in_table
