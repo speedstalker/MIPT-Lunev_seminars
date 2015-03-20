@@ -4,22 +4,24 @@
 #include <stdio.h>
 
 
-int my_errno;
-
 typedef  void                hash_key_t;
 typedef  void                hash_entry_t;
 typedef  struct Hash_table*  hash_table_ptr;
 typedef  struct Iterator*    iterator_ptr;
 
-typedef  int (*hash_func)(const hash_key_t*);
+typedef  size_t (*hash_func)(const hash_key_t* hash_key, size_t hash_key_size, size_t hash_table_size);
 
 // RETURN VALUE:  0 - if success
 //               -1 - otherwise, with my_errno indicating the error
-int  Hash_table_construct (hash_table_ptr* hash_table, size_t hash_table_size, int (*hash_func)(const hash_key_t*));
-void Hash_table_destruct  (hash_table_ptr* hash_table);
+int Hash_table_construct (hash_table_ptr* hash_table, size_t hash_table_size, hash_func hashing_func);
+int Hash_table_destruct  (hash_table_ptr* hash_table);
 
-int Hash_table_add (hash_table_ptr hash_table, const hash_entry_t*);
+int Hash_table_add_elem    (hash_table_ptr hash_table, const hash_key_t* hash_key, size_t hash_key_size,
+                                                  const hash_entry_t* entry_to_add, size_t entry_size);
+int Hash_table_remove_elem (hash_table_ptr hash_table, const hash_key_t* hash_key, size_t hash_key_size);
 
+//  find! is_elem_in_table
+int find ();
 
 // RETURN VALUE:  iterator id - if success
 //               -1           - otherwise, with my_errno indicating the error
@@ -35,7 +37,5 @@ int          is_end    (const iterator_ptr usr_iter);         // 0 - no, not end
 hash_key_t   get_key   (const iterator_ptr usr_iter);
 hash_entry_t get_entry (const iterator_ptr usr_iter);
 
-// exactly the same as 'perror' func
-void my_perror (const char* usr_str);
 
 #endif // __HASH_TABLE_H_INCLUDED
