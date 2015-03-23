@@ -11,12 +11,16 @@ static const char* errno_error_definit[numb_of_error_codes + 1] =
         [no_error]        = "no error has occurred",
 
         [mem_err]         = "memory error has occured",
-        [wrong_args]      = "wrong arguments was given to the function",
 
+        [wrong_args]      = "wrong arguments was given to the function",
+        [wrong_hash_func] = "hash function gives a key, which value is > than \
+                                        size of hash_table",
+
+        [table_empty]     = "hash table is currently empty",
         [entry_not_found] = "entry with key that you specified is not found",
 
         [inconsist_state] = "hash table is in inconsistent state, \
-                                it is better to delete it",
+                                        it is better to delete it",
         };
 //==============================================================================
 

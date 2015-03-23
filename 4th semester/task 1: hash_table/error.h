@@ -8,9 +8,12 @@ typedef enum errno_error_codes
         {
         no_error = 0,
 
-        wrong_args,
         mem_err,
 
+        wrong_args,
+        wrong_hash_func,
+
+        table_empty,
         entry_not_found,
 
         inconsist_state,
