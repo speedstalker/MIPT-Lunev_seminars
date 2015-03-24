@@ -1,0 +1,10 @@
+1) maybe include key into entry_t and create hash_func with extrating of key
+        - no, e.g. in phone book I can't delete a person if I know only his name and
+                do not know the whole his profile (number and etc.)
+
+2) calloc only one time large piece of memory, and place structure, key and entry in row,
+        and point pointers to different places in these large piece of memory
+
+
+
+*) cscope, ctags
