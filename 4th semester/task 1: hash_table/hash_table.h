@@ -29,6 +29,8 @@ iterator_ptr get_iterator    (const hash_table_ptr hash_table);
 int          delete_iterator (iterator_ptr*        usr_iter);
 iterator_ptr dup_iterator    (const iterator_ptr   usr_iter);
 
+// functions w/o const in params change the iter, so act as with realloc:
+// avoid using like this: my_iter = move_next (my_iter);
 iterator_ptr move_next (      iterator_ptr usr_iter);
 iterator_ptr move_prev (      iterator_ptr usr_iter);
 int          is_end    (const iterator_ptr usr_iter);         // -1 - error; 0 - no, not end; 1 - yes, is end

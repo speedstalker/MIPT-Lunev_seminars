@@ -3,10 +3,24 @@
 #include "error.h"
 #include <assert.h>
 #include <stdio.h>
-#include <malloc.h>
 #include <string.h>
 
-#define IS_DEBUG_ON 1
+
+#define IS_DEBUG_ON     0
+
+//---------------------------
+// for testing purposes only
+//---------------------------
+#define GCOV_MEM_ERR_ON 1
+
+#if (GCOV_MEM_ERR_ON == 1)
+        #include "my_mem_funcs.h"
+        #define calloc my_calloc
+        #define memcpy my_memcpy
+#else
+        #include <malloc.h>
+#endif
+//---------------------------
 
 
 //==============================================================================
@@ -581,7 +595,8 @@ if (usr_iter->list_node == NULL)
         assert (!"internal error in move_next: usr_iter->list_node == NULL");
 #endif
 
-iter = get_iterator ((hash_table_t*)(usr_iter->hash_table)); // cast to avoid warnings about 'const'
+// cast to avoid warnings about need 'hash_table_ptr', get 'struct hash_table *'
+iter = get_iterator ((hash_table_t*)(usr_iter->hash_table));
 #if (IS_DEBUG_ON == 1)
 if ((iter == NULL) && (my_errno == wrong_args))
         assert (!"internal error in is_end: wrong args passed to delete_iterator func");

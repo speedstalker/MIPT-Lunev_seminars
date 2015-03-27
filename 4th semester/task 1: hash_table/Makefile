@@ -17,7 +17,7 @@ $(EXECUTABLE): $(OBJECTS)
 	$(CC) $(CFLAGS) -o $@ $^
 
 %.o: %.c
-	$(CC) -c -MD $(CFLAGS) -o $@ $^
+	$(CC) -c -MD $(CFLAGS) -o $@ $<
 
 -include $(wildcard *.d)
 
