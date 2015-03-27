@@ -586,7 +586,7 @@ return usr_iter;
 */
 int is_end (const iterator_ptr usr_iter)
 {
-int ret_val = 0, ret_val2 = 0;
+int ret_val = 0;
 iterator_t *iter = NULL, *tmp_iter = NULL;
 
 if (usr_iter == NULL)
@@ -606,7 +606,7 @@ if (usr_iter->list_node == NULL)
 iter = get_iterator ((hash_table_t*)(usr_iter->hash_table));
 #if (IS_DEBUG_ON == 1)
 if ((iter == NULL) && (my_errno == wrong_args))
-        assert (!"internal error in is_end: wrong args passed to delete_iterator func");
+        assert (!"internal error in is_end: wrong args passed to get_iterator func");
 #endif
 if (iter == NULL)
         return -1; // because my_errno was set by 'get_iterator'
@@ -633,13 +633,12 @@ if ((ret_val < 0) || (0 < ret_val))
 else
         ret_val = 1; // is end
 
-ret_val2 = delete_iterator (&iter);
 #if (IS_DEBUG_ON == 1)
-if ((ret_val2 == -1) && (my_errno == wrong_args))
+if (delete_iterator (&iter)) // as func returns -1 only if wrong args were passed
         assert (!"internal error in is_end: wrong args passed to delete_iterator func");
+#else
+delete_iterator (&iter);
 #endif
-if (ret_val2 == -1)
-        return -1;
 
 return ret_val;
 }
