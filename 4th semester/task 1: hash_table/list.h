@@ -67,9 +67,8 @@ static inline void _list_del_entry (list_node_t* entry)
         entry->prev = NULL;
         entry->next = NULL;
         }
-
 //==============================================================================
 
 
-
 #endif // __LIST_H_INCLUDED
+

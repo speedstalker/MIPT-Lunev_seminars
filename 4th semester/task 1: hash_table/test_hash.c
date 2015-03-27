@@ -16,8 +16,10 @@
 // NO WAY =(: (hash_table_destruct, h_t_delete_elem & _delete_h_e_..., delete_iterator pass &NULL maybe =) )
 // WRONG: is_end from empty table; if table is empty - I don't have any iters - can't call is_end func
 
+//==============================================================================
 #define PROBAB_NUMB 100
 extern unsigned seed;
+//==============================================================================
 
 size_t cool_hash_func (const hash_key_t* hash_key, size_t hash_key_size, size_t hash_table_size)
         {
@@ -121,7 +123,6 @@ else
         srand (seed);
         }
 //------------------------------------------------------------------------------
-
 
 
 /*
@@ -756,7 +757,6 @@ get_key   (NULL);
 get_entry (NULL);
 
 
-
-
 return 0;
 }
+

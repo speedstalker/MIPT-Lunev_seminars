@@ -5,10 +5,11 @@
 #include <malloc.h>
 #include <string.h> // for memcpy
 
+
+//==============================================================================
 #define PROBAB_NUMB 20
 extern unsigned seed;
-
-
+//==============================================================================
 void* my_calloc (size_t nmemb, size_t size)
         {
         if ((rand() % PROBAB_NUMB) == 0)
@@ -24,6 +25,7 @@ void* my_memcpy (void *dest, const void *src, size_t n)
         else
                 return NULL;
         };
+//==============================================================================
 
 
 #endif // __MY_MEM_FUNCS_H_INCLUDED

@@ -6,6 +6,8 @@
 #include <string.h>
 
 
+// if (1) - enables inner checkings
+// like what args passed to internal '_***' funcs, and so on
 #define IS_DEBUG_ON     0
 
 //---------------------------
@@ -116,7 +118,7 @@ error_hash_elem:
 
 // only for internal usage
 // deletes only memory reserved by current hash_elem structure,
-//      but do not delete it from hash table properly
+//      but do not delete it from hash_table lists properly
 // RETURN VALUE:  0 - if success
 //               -1 - otherwise, with my_errno indicating the error (if wrong args was given actually)
 static inline int _delete_hash_elem_from_mem (hash_elem_t** hash_elem)
@@ -372,7 +374,9 @@ static inline iterator_t* _create_iterator (const hash_table_t* hash_table, cons
 {
 iterator_t* iter = NULL;
 
-// I don`t check arguments, cause nothing bad will happen if they will be, for example, NULL
+// I don`t check arguments, cause nothing bad will happen if they will be, for example, NULL;
+//      maybe I'm  passing NULLs here, because want to fill the fields of iterator_t structure
+//      later by hands.
 
 iter = (iterator_t*) calloc (1, sizeof (iterator_t));
 if (iter == NULL)
@@ -576,7 +580,10 @@ usr_iter->list_node = curr_list_node->prev;
 return usr_iter;
 }
 
-// -1 - error; 0 - no, not end; 1 - yes, is end
+/* -1 - error;
+ *  0 - no, not end;
+ *  1 - yes, is end.
+*/
 int is_end (const iterator_ptr usr_iter)
 {
 int ret_val = 0, ret_val2 = 0;
@@ -708,6 +715,5 @@ error_calloc:
         my_errno = mem_err;
         return NULL;
 }
-
 //==============================================================================
 

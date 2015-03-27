@@ -2,6 +2,7 @@
 #define __ERROR_H_INCLUDED
 
 
+//==============================================================================
 extern int my_errno;
 
 typedef enum errno_error_codes
@@ -16,14 +17,19 @@ typedef enum errno_error_codes
         table_empty,
         entry_not_found,
 
-        inconsist_state,
-
         numb_of_error_codes
         } error_code_t;
+//==============================================================================
 
-
-// exactly the same as 'perror' func
+//==============================================================================
+// exactly the same as 'perror' func: i.e. if usr_str = "my_func",
+//      and my_errno = no_error, then following will be printed to stdout
+//
+// $ my_func: no error has occurred
+//
 void my_perror (const char* usr_str);
+//==============================================================================
 
 
 #endif // __ERROR_H_INCLUDED
+

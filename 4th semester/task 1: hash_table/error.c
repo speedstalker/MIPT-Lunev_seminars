@@ -18,9 +18,6 @@ static const char* errno_error_definit[numb_of_error_codes + 1] =
 
         [table_empty]     = "hash table is currently empty",
         [entry_not_found] = "entry with key that you specified is not found",
-
-        [inconsist_state] = "hash table is in inconsistent state, \
-                                        it is better to delete it",
         };
 //==============================================================================
 
@@ -28,9 +25,18 @@ static const char* errno_error_definit[numb_of_error_codes + 1] =
 // Realisation of functions
 //==============================================================================
 
-// exactly the same as 'perror' func
+// exactly the same as 'perror' func (for example look at 'error.h' file)
 inline void my_perror (const char* usr_str)
 {
-printf ("%s: %s\n", usr_str, errno_error_definit[my_errno]);
+if (usr_str != NULL)
+        if (*usr_str != '\0')
+                {
+                printf ("%s: %s\n", usr_str, errno_error_definit[my_errno]);
+                return;
+                }
+
+// if smth is wrong
+printf ("wrong args were given to 'my_perror' func\n");
 }
 //==============================================================================
+
