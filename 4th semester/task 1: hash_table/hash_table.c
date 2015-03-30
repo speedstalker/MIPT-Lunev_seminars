@@ -93,13 +93,13 @@ if (hash_elem == NULL)
         hash_elem->list_node.next = NULL;
 #endif
 //-----
-hash_elem->key = (hash_key_t*)((size_t)hash_elem + sizeof (hash_elem_t));
+hash_elem->key = (hash_key_t*)(hash_elem + 1);
 if (memcpy (hash_elem->key, hash_key, hash_key_size) == NULL)
         goto error_memcpy_key;
 
 hash_elem->key_size = hash_key_size;
 //-----
-hash_elem->entry = (hash_entry_t*)((size_t)hash_elem + sizeof (hash_elem_t) + hash_key_size);
+hash_elem->entry = (hash_entry_t*)((char*)hash_elem->key + hash_key_size);
 if (memcpy (hash_elem->entry, entry_to_add, entry_to_add_size) == NULL)
         goto error_memcpy_entry;
 
@@ -110,7 +110,10 @@ return hash_elem;
 
 error_memcpy_entry:
 error_memcpy_key:
-        free (hash_elem); hash_elem = NULL;
+        free (hash_elem);
+        #if (IS_DEBUG_ON == 1)
+        hash_elem = NULL;
+        #endif
 error_hash_elem:
         my_errno = mem_err;
         return NULL;
@@ -164,7 +167,7 @@ if (hash_table_ptr == NULL)
 //-----
 hash_table_ptr->size    = hash_table_size;
 hash_table_ptr->func    = hashing_func;
-hash_table_ptr->idx_arr = (list_node_t**)((size_t)hash_table_ptr + sizeof (hash_table_t));
+hash_table_ptr->idx_arr = (list_node_t**)(hash_table_ptr + 1);
 //-----
 *hash_table = hash_table_ptr;
 
@@ -206,7 +209,10 @@ for (i = 0; i < (*hash_table)->size; i++)
                 #endif
                 }
 
-        free (head); head = NULL;
+        free (head);
+        #if (IS_DEBUG_ON == 1)
+        head = NULL;
+        #endif
         }
 
 // destruct hash_table (and idx_array too)
@@ -673,7 +679,10 @@ return key_buffer;
 
 
 error_memcpy:
-        free (key_buffer); key_buffer = NULL;
+        free (key_buffer);
+        #if (IS_DEBUG_ON == 1)
+        key_buffer = NULL;
+        #endif
 error_calloc:
         my_errno = mem_err;
         return NULL;
@@ -709,7 +718,10 @@ return entry_buffer;
 
 
 error_memcpy:
-        free (entry_buffer); entry_buffer = NULL;
+        free (entry_buffer);
+        #if (IS_DEBUG_ON == 1)
+        entry_buffer = NULL;
+        #endif
 error_calloc:
         my_errno = mem_err;
         return NULL;
