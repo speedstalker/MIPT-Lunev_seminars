@@ -7,46 +7,59 @@
 #include <pthread.h>
 
 
-/**
-  * container_of - cast a member of a structure out to the containing structure
-  * @ptr:        the pointer to the member.
-  * @type:       the type of the container struct this is embedded in.
-  * @member:     the name of the member within the struct.
-  *
-  */
-#define container_of(ptr, type, member)                                 \
-                ({                                                      \
-                const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
-                (type *)( (char *)__mptr - offsetof(type,member) );     \
-                })
+//------------------------------------------------------------------------------
+// Error handling macroses
+//------------------------------------------------------------------------------
+#define IS_DEBUG 1
+
+#if (IS_DEBUG == 1)
+//{
+   #define HANDLE_ERROR HANDLE_ERROR_wL
+   #define HANDLE_ERROR_wL(msg)                                                    \
+                   do                                                              \
+                   {                                                               \
+                   char err_msg[256] = {0};                                        \
+                                                                                   \
+                   snprintf (err_msg, 255, "%d. " msg "%c", __LINE__, '\0');       \
+                   perror (err_msg);                                              \
+                   exit   (EXIT_FAILURE);                                         \
+                   }                                                               \
+                   while (0)
+//}
+#else
+//{
+   #define HANDLE_ERROR_wL HANDLE_ERROR
+   #define HANDLE_ERROR(msg) \
+                  do { perror(msg); exit(EXIT_FAILURE); } while (0)
+//}
+#endif
+//------------------------------------------------------------------------------
 
 
-#define HANDLE_ERROR(msg) \
-               do { perror(msg); exit(EXIT_FAILURE); } while (0)
-
+//#define f(x) (pow(x, 2))
 #define f(x) (x)
 // assign this defines to corresponding vars later in code, because
 // in this way program easily adopts to getting this params from command line
 #define FINENESS (0.000001)
-#define FROM     (-2000)
-#define TO       ( 2000)
+#define FROM     (-1000)
+#define TO       ( 1000)
 
 
 typedef struct general_data
         {
-        long numb_of_threads;
-        double fineness;
+        long        numb_of_threads;
+        long double fineness;
 
-        double from;
-        double to;
+        long double from;
+        long double to;
 
-        // I know about flexible sized arrays, but I'm aware of future problems
-        // with using this structure with 'container_of' macro
-        double* arr_of_thread_numbs;
+        // I know about flexible sized arrays
+        long double* arr_of_thread_numbs;       // I'm also using it as an each-thread-result-holder
+                                                // that's why it needs to be long double
         } general_data_t;
 
-static inline double simpsons_rule_formula  (double left_end, double right_end);
-void*                simpsons_rule_integral (void* thread_numb);
+static inline long double simpsons_rule_formula  (long double left_end, long double right_end);
+void*                     simpsons_rule_integral (void* thread_numb);
 
 
 int main (int argc, char* argv[])
@@ -58,7 +71,7 @@ int ret_val = 0;
 long numb_of_threads = 0;
 
 general_data_t* general_data = NULL;
-double          result = 0;
+long double     result = 0;
 
 //------------------------------------------------------------------------------
 // Getting number of threads
@@ -73,12 +86,8 @@ str = argv[1];
 
 errno = 0;
 numb_of_threads = strtol (str, &endptr, 10);    // 10 - base of numerical system
-if ((errno == ERANGE && (numb_of_threads == LONG_MAX || numb_of_threads == LONG_MIN))
-                   || (errno != 0 && numb_of_threads == 0))
-        {
-        perror ("strtol");
-        exit (EXIT_FAILURE);
-        }
+if (errno != 0)
+        HANDLE_ERROR ("strtol");
 
 if ((endptr == str) || (*endptr != '\0'))
         {
@@ -92,9 +101,11 @@ if (numb_of_threads <= 0)
         exit (EXIT_FAILURE);
         }
 //------------------------------------------------------------------------------
-
-if (!(general_data = (general_data_t*)calloc (1, sizeof (general_data_t) +
-                                              sizeof (*(general_data->arr_of_thread_numbs)) * numb_of_threads)))
+// actually allocs memory for general_data structure (treat it like a header for an array)
+// and an array that have size: typeof(*arr_of_thread_numbs) * numb_of_threads
+general_data = (general_data_t*)calloc (1, sizeof (general_data_t) +
+                                              sizeof (*(general_data->arr_of_thread_numbs)) * numb_of_threads);
+if (general_data == 0)
         HANDLE_ERROR("calloc - creating structure");
 
 // assign this defines to corresponding vars here, because
@@ -104,6 +115,8 @@ general_data->fineness        = FINENESS;
 general_data->from            = FROM;
 general_data->to              = TO;
 
+// (general_data + 1) points right behind the structure-header => to the first element of an array
+// then we just find out what type do pointer to the array member have
 general_data->arr_of_thread_numbs = (typeof (general_data->arr_of_thread_numbs))(general_data + 1);
 
 for (i = 0; i < numb_of_threads; i++)
@@ -112,7 +125,7 @@ for (i = 0; i < numb_of_threads; i++)
 //------------------------------------------------------------------------------
 // All thread's routines
 //------------------------------------------------------------------------------
-pthread_t thread_ids[numb_of_threads];
+pthread_t      thread_ids[numb_of_threads];
 pthread_attr_t thread_attr;
 
 if ((ret_val = pthread_attr_init (&thread_attr)))
@@ -138,7 +151,7 @@ for (i = 0; i < numb_of_threads; i++)
 
 if ((ret_val = pthread_attr_destroy (&thread_attr)))
         {
-        printf ("Error in pthread_attr_setdetachstate: ret_val = %d\n", ret_val);
+        printf ("Error in pthread_attr_destroy: ret_val = %d\n", ret_val);
         exit (EXIT_FAILURE);
         }
 
@@ -152,11 +165,10 @@ for (i = 0; i < numb_of_threads; i++)
 // if we came here - all threads have computed their parts
 //------------------------------------------------------------------------------
 
-
 for (i = 0; i < numb_of_threads; i++)
         result += general_data->arr_of_thread_numbs[i];
 
-printf ("result = %f\n", result);
+printf ("result = %Lf\n", result);
 
 free (general_data); general_data = NULL;
 
@@ -166,19 +178,29 @@ return 0;
 
 void* simpsons_rule_integral (void* thread_numb)
 {
-double* my_numb_ptr = (double*)thread_numb;
-double  my_numb     = *my_numb_ptr;
+long double* my_numb_ptr = (long double*)thread_numb;
+long double  my_numb     = *my_numb_ptr;
 
-double i = 0;
-double my_from = 0, my_to = 0, fineness = 0;
-double my_result = 0;
+long double i = 0;      // not int because algorithm step with not int fineness
+long double my_from = 0, my_to = 0, fineness = 0;
+long double my_result = 0;
 
 
+// (my_numb_ptr - (size_t)my_numb) - by doing this we get the pointer to the first array member
+// and then we step back by general_data_t size, to get the pointer to general_data structure
 general_data_t* general_data = (general_data_t*)(my_numb_ptr - (size_t)my_numb) - 1;
 
 // find out my own piece of (FROM;TO) to calculate integral on it
-my_from  = (general_data->to - general_data->from) * my_numb       / (general_data->numb_of_threads) + general_data->from;
-my_to    = (general_data->to - general_data->from) * (my_numb + 1) / (general_data->numb_of_threads) + general_data->from;
+if (my_numb == 0)
+        my_from = general_data->from;
+else
+        my_from  = (general_data->to - general_data->from) * my_numb       / (general_data->numb_of_threads) + general_data->from;
+
+if (my_numb == (general_data->numb_of_threads - 1))
+        my_to = general_data->to;
+else
+        my_to    = (general_data->to - general_data->from) * (my_numb + 1) / (general_data->numb_of_threads) + general_data->from;
+
 fineness = general_data->fineness;
 
 for (i = my_from; i < my_to; i += fineness)
@@ -189,7 +211,7 @@ for (i = my_from; i < my_to; i += fineness)
 pthread_exit (NULL);
 }
 
-static inline double simpsons_rule_formula (double left_end, double right_end)
+static inline long double simpsons_rule_formula (long double left_end, long double right_end)
 {
 return ((right_end - left_end)/6 * (f(left_end) + 4*f((left_end + right_end)/2) + f(right_end)));
 }
