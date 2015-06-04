@@ -75,6 +75,9 @@ struct solver_task
 
 int main (int argc, char* argv[])
 {
+int i = 0;
+int ret_val = 0;
+//----------
 int udp_sk = 0;
 long true = 1;
 
@@ -88,11 +91,13 @@ int tcp_sk = 0;
 struct accepted_solver_info arr_of_accepted_solvers[MAX_SOLVER_NUMB] = { {0} };
 int numb_of_connected_solvers = 0;
 struct accept_func_arg accept_func_arg = {0};
-
-int i = 0;
-int ret_val = 0;
 //----------
 struct solver_task solver_task = {0};
+
+long double partial_result = 0;
+long double general_result = 0;
+
+int numb_of_recv_bytes = 0;
 
 //------------------------------------------------------------------------------
 if (argc != 1)
@@ -226,6 +231,28 @@ for (i = 0; i < numb_of_connected_solvers; i++)
         printf ("task №%d has been sent to %s\n", i, inet_ntoa (arr_of_accepted_solvers[i].addr.sin_addr));
         }
 printf ("All tasks have been sent!\n\n");
+//------------------------------------------------------------------------------
+// Receive answers from solvers
+//------------------------------------------------------------------------------
+printf ("started receiving partial results:\n");
+for (i = 0; i < numb_of_connected_solvers; i++)
+        {
+        numb_of_recv_bytes = 0;
+        do
+                {
+                ret_val = 0;
+                if ((ret_val = recv (arr_of_accepted_solvers[i].tcp_sk,
+                                     &partial_result + numb_of_recv_bytes,
+                                     sizeof (partial_result) - numb_of_recv_bytes, 0)) == -1)
+                        HANDLE_ERROR ("recv partial_result");
+                numb_of_recv_bytes += ret_val;
+                }
+        while (numb_of_recv_bytes != sizeof (partial_result));
+        printf ("received partial result from solver №%d, addr: %s\n", i, inet_ntoa (arr_of_accepted_solvers[i].addr.sin_addr));
+        general_result += partial_result;
+        }
+
+printf ("\nGeneral result = %Lf\n", general_result);
 //------------------------------------------------------------------------------
 
 
