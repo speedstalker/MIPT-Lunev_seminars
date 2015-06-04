@@ -44,20 +44,29 @@
 #define PORT 1234
 
 
+struct solver_task
+        {
+        int your_numb;
+        int numb_of_connected_solvers;
+        };
+
 int main (int argc, char* argv[])
 {
+int ret_val = 0;
+//----------
 char *str = NULL, *endptr = NULL;
 long numb_of_threads = 0;
-
+//----------
 int udp_sk = 0;
 char udp_buf[sizeof (UDP_MSG) + 1] = "\0";
 
 int numb_of_recv_bytes = 0;
-
+//----------
 struct sockaddr_in addr = {0}, tasker_addr = {0};
 socklen_t tasker_addr_size = 0;
 //----------
 int tcp_sk = 0;
+struct solver_task my_task = {0};
 
 //------------------------------------------------------------------------------
 // Getting number of threads
@@ -130,10 +139,37 @@ if (connect (tcp_sk, (struct sockaddr*)&addr, sizeof (addr)) == -1)
         HANDLE_ERROR ("tcp_sk connect");
 printf ("tcp_sk has been connected to %s!\n\n", inet_ntoa (tasker_addr.sin_addr));
 //------------------------------------------------------------------------------
+// Receive the message from tasker
+//------------------------------------------------------------------------------
+printf ("started receiving the message...\n");
+numb_of_recv_bytes = 0;
+do
+        {
+        ret_val = 0;
+        if ((ret_val = recv (tcp_sk,
+                             &my_task + numb_of_recv_bytes,
+                             sizeof (struct solver_task) - numb_of_recv_bytes, 0)) == -1)
+                HANDLE_ERROR ("recv solver_task");
+        numb_of_recv_bytes += ret_val;
+        }
+while (numb_of_recv_bytes != sizeof (struct solver_task));
+
+printf ("message has been received!\n");
+printf ("My number is %d of total %d.\n", my_task.your_numb, my_task.numb_of_connected_solvers);
+//------------------------------------------------------------------------------
 
 
+
+
+
+
+
+//------------------------------------------------------------------------------
+// Cleanup
+//------------------------------------------------------------------------------
 close (tcp_sk);
 close (udp_sk);
+//------------------------------------------------------------------------------
 
 return 0;
 }
