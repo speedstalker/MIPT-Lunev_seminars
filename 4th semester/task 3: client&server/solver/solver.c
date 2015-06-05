@@ -564,9 +564,10 @@ addr.sin_port        = START_PORT + my_numb; //tcp_port; //htons (UDP_PORT);
 addr.sin_addr.s_addr = tasker_addr.sin_addr.s_addr;
 memset (addr.sin_zero, '\0', sizeof (addr.sin_zero));
 
+printf ("start sending the UDP_PROVE_SOLVER_REACHABILITY_MSG on port %d...\n", START_PORT + my_numb);
+
 while (1)
         {
-        //printf ("start sending the UDP_PROVE_SOLVER_REACHABILITY_MSG on port %d...\n", START_PORT + my_numb);
         numb_of_sent_bytes = sendto (udp_sk, udp_prove_msg, strlen (udp_prove_msg), 0,
                                                   (struct sockaddr*)(&addr), sizeof (addr));
         // some error

@@ -512,7 +512,7 @@ int udp_sk = 0;
 int numb_of_recv_bytes = 0;
 
 char udp_buf[sizeof (UDP_PROVE_SOLVER_REACHABILITY_MSG) + 1] = "\0";
-struct sockaddr_in tasker_addr = {0};
+struct sockaddr_in tasker_addr = {0}, addr = {0};
 socklen_t tasker_addr_size = 0;
 
 int i = 0;
@@ -549,6 +549,23 @@ while (1)
                                 {
                                 if (is_first_recv == 1)
                                         {
+
+
+                                        addr.sin_family      = AF_INET;
+                                        addr.sin_port        = htons (PORT);
+                                        addr.sin_addr.s_addr = htonl (BROADCAST_IP);
+                                        memset (addr.sin_zero, '\0', sizeof (addr.sin_zero));
+
+                                        if ((sendto (udp_sk, "test", strlen ("test"), 0,
+                                                                          (struct sockaddr*)(&addr), sizeof (addr))) == -1)
+                                                {
+                                                printf ("break!\n");
+                                                perror ("sendto");
+                                                break;
+                                                }
+
+
+
                                         printf ("\nLost connection with solver on port %d (proven by tester 1)!\n", START_PORT + i);
                                         printf ("Terminating the program...\n");
                                         exit   (EXIT_FAILURE);
@@ -556,15 +573,17 @@ while (1)
                                 else
                                         break;
                                 }
-                        /*
-                        // tasker closed the connection
+                        // solver closed the connection
                         else if (numb_of_recv_bytes == 0)
                                 {
+                                printf ("NULL!\n");
+                                break;
+                                /*
                                 printf ("\nLost connection with solver (proven by tester 2)!\n");
                                 printf ("Terminating the program...\n");
                                 exit   (EXIT_FAILURE);
+                                */
                                 }
-                        */
 
                         //udp_buf[numb_of_recv_bytes] = '\0';
                         //printf ("packet contains: \"%s\" from solver on port %d\n\n", udp_buf, START_PORT + i);
