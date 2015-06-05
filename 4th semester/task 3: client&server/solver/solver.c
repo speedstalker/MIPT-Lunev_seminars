@@ -48,8 +48,9 @@
 #define UDP_PROVE_TASKER_REACHABILITY_MSG       "Tasker is reachable!"
 #define UDP_PROVE_SOLVER_REACHABILITY_MSG       "Solver is reachable!"
 
-#define PROVE_TEST_PERIOD       5 // in sec
-#define PROVE_SLEEP_PERIOD      1 // in sec
+#define PROVE_TEST_PERIOD        5 // in sec
+#define PROVE_SLEEP_PERIOD       1 // in sec
+#define MAX_WAIT_FOR_TASK_TIME  10 // in sec
 
 #define PORT            1234
 #define UDP_PORT        1235
@@ -194,6 +195,22 @@ printf ("tcp_sk has been connected to %s!\n\n", inet_ntoa (tasker_addr.sin_addr)
 // Receive the task from the tasker
 //------------------------------------------------------------------------------
 printf ("Waiting for the task...\n");
+fd_set rfds; FD_ZERO (&rfds);
+FD_SET (tcp_sk, &rfds);
+
+struct timeval tv;
+tv.tv_sec  = MAX_WAIT_FOR_TASK_TIME;
+tv.tv_usec = 0;
+
+if ((ret_val = select (tcp_sk + 1, &rfds, NULL, NULL, &tv)) == -1)
+        HANDLE_ERROR ("select on task waiting");
+else if (ret_val == 0)
+        {
+        printf ("\nLost connection with tasker (proven by select tester)!\n");
+        printf ("Terminating the program...\n");
+        exit   (EXIT_FAILURE);
+        }
+
 numb_of_recv_bytes = 0;
 do
         {
@@ -549,7 +566,7 @@ memset (addr.sin_zero, '\0', sizeof (addr.sin_zero));
 
 while (1)
         {
-        printf ("start sending the UDP_PROVE_SOLVER_REACHABILITY_MSG on port %d...\n", START_PORT + my_numb);
+        //printf ("start sending the UDP_PROVE_SOLVER_REACHABILITY_MSG on port %d...\n", START_PORT + my_numb);
         numb_of_sent_bytes = sendto (udp_sk, udp_prove_msg, strlen (udp_prove_msg), 0,
                                                   (struct sockaddr*)(&addr), sizeof (addr));
         // some error
@@ -559,7 +576,7 @@ while (1)
         else if ((numb_of_sent_bytes == -1) && (errno == EBADF))
                 pthread_exit (NULL);
 
-        printf ("sent %d bytes: \"%s\"\n\n", numb_of_sent_bytes, udp_prove_msg);
+        //printf ("sent %d bytes: \"%s\"\n\n", numb_of_sent_bytes, udp_prove_msg);
 
         sleep (PROVE_SLEEP_PERIOD);
         }

@@ -322,10 +322,10 @@ for (i = 0; i < numb_of_connected_solvers; i++)
         addr.sin_addr.s_addr = arr_of_solver_testers[i].ip;
         memset (addr.sin_zero, '\0', sizeof (addr.sin_zero));
 
-        printf ("port: %d, 1234 is %d, 1235 is %d\n", addr.sin_port, htons(1234), htons(1235));
+        // printf ("port: %d, 1234 is %d, 1235 is %d\n", addr.sin_port, htons(1234), htons(1235));
         if (bind (arr_of_solver_testers[i].udp_sk, (struct sockaddr*)(&addr), sizeof (addr)) == -1)
                 HANDLE_ERROR ("udp_sk bind");
-        printf ("udp_sk has been binded!\n");
+        // printf ("udp_sk has been binded!\n");
 
         if ((ret_val = fcntl (arr_of_solver_testers[i].udp_sk, F_SETFL, O_NONBLOCK)) == -1)
                 HANDLE_ERROR ("fcntl udp_sk O_NONBLOCK");
@@ -529,7 +529,7 @@ while (1)
 
         for (i = 0; i < numb_of_connected_solvers; i++)
                 {
-                printf ("testing solver reachability: recvfrom...\n");
+                //printf ("testing solver reachability: recvfrom...\n");
 
                 udp_sk = arr_of_solver_testers[i].udp_sk;
                 is_first_recv = 1;
@@ -566,8 +566,8 @@ while (1)
                                 }
                         */
 
-                        udp_buf[numb_of_recv_bytes] = '\0';
-                        printf ("packet contains: \"%s\" from solver on port %d\n\n", udp_buf, START_PORT + i);
+                        //udp_buf[numb_of_recv_bytes] = '\0';
+                        //printf ("packet contains: \"%s\" from solver on port %d\n\n", udp_buf, START_PORT + i);
 
                         is_first_recv = 0;
                         }
