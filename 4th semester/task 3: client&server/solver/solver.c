@@ -1,3 +1,5 @@
+#define I_AM_SOLVER
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -17,6 +19,8 @@
 
 #include "../reachability_tests/reachability_of_solver.h"
 #include "../reachability_tests/reachability_of_tasker.h"
+
+#include "part_of_simp_int.h"
 
 
 //------------------------------------------------------------------------------
@@ -47,33 +51,11 @@
 #endif
 //------------------------------------------------------------------------------
 
-#define UDP_MSG                                 "Is there anybody out there?"
-
-#define MAX_WAIT_FOR_TASK_TIME  10 // in sec
-
 #define PORT 1234
 
-#define f(x) (x)
-#define FINENESS (0.000001)
-#define FROM     (-1000)
-#define TO       ( 1000)
+#define UDP_MSG "Is there anybody out there?"
 
-
-typedef struct general_data
-        {
-        long        numb_of_threads;
-        long double fineness;
-
-        long double from;
-        long double to;
-
-        // I know about flexible sized arrays
-        long double* arr_of_thread_numbs;       // I'm also using it as an each-thread-result-holder
-                                                // that's why it needs to be long double
-        } general_data_t;
-
-static inline long double simpsons_rule_formula  (long double left_end, long double right_end);
-void*                     simpsons_rule_integral (void* thread_numb);
+#define MAX_WAIT_FOR_TASK_TIME  10 // in sec
 
 
 //----------
@@ -84,6 +66,8 @@ struct solver_task
         };
 //----------
 
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int main (int argc, char* argv[])
 {
@@ -164,6 +148,19 @@ printf ("packet is %d bytes long\n", numb_of_recv_bytes);
 udp_buf[numb_of_recv_bytes] = '\0';
 printf ("packet contains: \"%s\"\n\n", udp_buf);
 //------------------------------------------------------------------------------
+// Make a thread to test reachability of the tasker
+//------------------------------------------------------------------------------
+pthread_t reachability_of_tasker_tester_thr_id = 0;
+
+if ((ret_val = pthread_create (&reachability_of_tasker_tester_thr_id,
+                               NULL,
+                               reachability_of_tasker_tester,
+                               &udp_sk)))
+        {
+        printf ("Error in pthread_create for the tasker reachability: ret_val = %d\n", ret_val);
+        exit (EXIT_FAILURE);
+        }
+//------------------------------------------------------------------------------
 // Create a TCP socket and connect to the tasker
 //------------------------------------------------------------------------------
 if ((tcp_sk = socket (PF_INET, SOCK_STREAM, 0)) == -1)
@@ -240,20 +237,9 @@ if ((ret_val = pthread_create (&reachability_of_solver_prover_thr_id,
         exit (EXIT_FAILURE);
         }
 //------------------------------------------------------------------------------
-// Make a thread to test reachability of the tasker
-//------------------------------------------------------------------------------
-pthread_t reachability_of_tasker_tester_thr_id = 0;
 
-if ((ret_val = pthread_create (&reachability_of_tasker_tester_thr_id,
-                               NULL,
-                               reachability_of_tasker_tester,
-                               &udp_sk)))
-        {
-        printf ("Error in pthread_create for the tasker reachability: ret_val = %d\n", ret_val);
-        exit (EXIT_FAILURE);
-        }
 //------------------------------------------------------------------------------
-// Piece of task_2: simp_int.c program, e.g. mathematical algorithm
+// Piece of task_2: simp_int.c program, i.e. mathematical algorithm
 //------------------------------------------------------------------------------
 // actually allocs memory for general_data structure (treat it like a header for an array)
 // and an array that have size: typeof(*arr_of_thread_numbs) * numb_of_threads
@@ -281,7 +267,7 @@ general_data->arr_of_thread_numbs = (typeof (general_data->arr_of_thread_numbs))
 for (i = 0; i < numb_of_threads; i++)
         general_data->arr_of_thread_numbs[i] = i;
 //------------------------------------------------------------------------------
-// All thread's routines
+// All thread's routines for actual calculating
 //------------------------------------------------------------------------------
 pthread_t      thread_ids[numb_of_threads];
 
@@ -310,6 +296,8 @@ for (i = 0; i < numb_of_threads; i++)
         result += general_data->arr_of_thread_numbs[i];
 
 printf ("my result = %Lf\n\n", result);
+//------------------------------------------------------------------------------
+
 //------------------------------------------------------------------------------
 // Send my result to the tasker
 //------------------------------------------------------------------------------
@@ -369,46 +357,5 @@ if ((ret_val = pthread_join (reachability_of_solver_prover_thr_id, NULL)))
 //------------------------------------------------------------------------------
 
 return 0;
-}
-
-
-void* simpsons_rule_integral (void* thread_numb)
-{
-long double* my_numb_ptr = (long double*)thread_numb;
-long double  my_numb     = *my_numb_ptr;
-
-long double i = 0;      // not int because algorithm step with not int fineness
-long double my_from = 0, my_to = 0, fineness = 0;
-long double my_result = 0;
-
-
-// (my_numb_ptr - (size_t)my_numb) - by doing this we get the pointer to the first array member
-// and then we step back by general_data_t size, to get the pointer to general_data structure
-general_data_t* general_data = (general_data_t*)(my_numb_ptr - (size_t)my_numb) - 1;
-
-// find out my own piece of (FROM;TO) to calculate integral on it
-if (my_numb == 0)
-        my_from = general_data->from;
-else
-        my_from  = (general_data->to - general_data->from) * my_numb       / (general_data->numb_of_threads) + general_data->from;
-
-if (my_numb == (general_data->numb_of_threads - 1))
-        my_to = general_data->to;
-else
-        my_to    = (general_data->to - general_data->from) * (my_numb + 1) / (general_data->numb_of_threads) + general_data->from;
-
-fineness = general_data->fineness;
-
-for (i = my_from; i < my_to; i += fineness)
-        my_result += simpsons_rule_formula (i, i + fineness);
-
-*my_numb_ptr = my_result;
-
-pthread_exit (NULL);
-}
-
-static inline long double simpsons_rule_formula (long double left_end, long double right_end)
-{
-return ((right_end - left_end)/6 * (f(left_end) + 4*f((left_end + right_end)/2) + f(right_end)));
 }
 

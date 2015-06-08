@@ -15,6 +15,7 @@
 #define SOLVER_TEST_SLEEP_PERIOD       5 // in sec
 #define SOLVER_PROVE_SLEEP_PERIOD      1 // in sec
 
+
 //------------------------------------------------------------------------------
 // Prover
 //------------------------------------------------------------------------------
@@ -22,8 +23,8 @@ void* reachability_of_solver_prover (void* reach_of_solv_prov_arg_ptr);
 
 struct reach_of_solv_prov_arg
         {
-        int                udp_sk;
         int                my_numb;
+        int                udp_sk;
         struct sockaddr_in tasker_addr;
         };
 //------------------------------------------------------------------------------
@@ -35,12 +36,13 @@ struct reach_of_solv_test_arg
         {
         int                        numb_of_connected_solvers;
         struct solver_tester_info* arr_of_solver_testers;
+        int*                       arr_of_if_res_received;
         };
 
 struct solver_tester_info
         {
         int      udp_sk;
-        uint32_t ip;
+        //d uint32_t ip;
         };
 //------------------------------------------------------------------------------
 

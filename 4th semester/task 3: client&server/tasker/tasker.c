@@ -1,11 +1,16 @@
+#define I_AM_TASKER
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <limits.h>
 #include <errno.h>
+#include <assert.h>
 
 #include <string.h>
 #include <pthread.h>
+#include <sys/select.h>
+#include <sys/time.h>
 #include <fcntl.h>
 
 #include <sys/types.h>
@@ -80,10 +85,14 @@ struct solver_task
 //----------
 
 
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 int main (int argc, char* argv[])
 {
 int i = 0;
 int ret_val = 0;
+
+int mutex_ret_val = 0;
 //----------
 int  udp_sk = 0;
 long true  = 1;
@@ -95,10 +104,16 @@ struct sockaddr_in addr      = {0};
 socklen_t          addr_size = 0;
 //----------
 int tcp_sk = 0;
+
+fd_set rfds;
+int max_tcp_sk = 0;
+int numb_of_ready_fds = 0;
 //----------
 struct accept_func_arg      accept_func_arg = {0};
 int                         numb_of_connected_solvers = 0;
 struct accepted_solver_info arr_of_accepted_solvers[MAX_SOLVER_NUMB] = { {0} };
+int arr_of_if_res_received[MAX_SOLVER_NUMB] = {0};
+int numb_of_res_received = 0;
 
 struct solver_tester_info   arr_of_solver_testers[MAX_SOLVER_NUMB]   = { {0} };
 //----------
@@ -140,7 +155,7 @@ if (listen (tcp_sk, BACKLOG) == -1)
         HANDLE_ERROR ("tcp_sk listen");
 printf ("tcp_sk is listening now!\n\n");
 //------------------------------------------------------------------------------
-// Create an UDP socket and broadcast the message
+// Create an UDP socket
 //------------------------------------------------------------------------------
 if ((udp_sk = socket (PF_INET, SOCK_DGRAM, 0)) == -1)
         HANDLE_ERROR ("udp_sk socket");
@@ -149,17 +164,6 @@ printf ("udp_sk has been created!\n");
 if (setsockopt (udp_sk, SOL_SOCKET, SO_BROADCAST, &true, sizeof (true)) == -1)
         HANDLE_ERROR ("udp_sk setsockopt BROADCAST");
 printf ("udp_sk has been set to BROADCAST mode!\n");
-//----------
-addr.sin_family      = AF_INET;
-addr.sin_port        = htons (PORT);
-addr.sin_addr.s_addr = htonl (BROADCAST_IP);
-memset (addr.sin_zero, '\0', sizeof (addr.sin_zero));
-
-printf ("start broadcasting the UDP_MSG...\n");
-if ((numb_of_sent_bytes = sendto (udp_sk, udp_msg, strlen (udp_msg), 0,
-                                  (struct sockaddr*)(&addr), sizeof (addr))) == -1)
-        HANDLE_ERROR ("udp sendto");
-printf ("broadcasted %d bytes: \"%s\"\n\n", numb_of_sent_bytes, udp_msg);
 //------------------------------------------------------------------------------
 // Make a thread to prove reachability of the tasker
 //------------------------------------------------------------------------------
@@ -173,6 +177,19 @@ if ((ret_val = pthread_create (&reachability_of_tasker_prover_thr_id,
         printf ("Error in pthread_create for the tasker reachability: ret_val = %d\n", ret_val);
         exit (EXIT_FAILURE);
         }
+//------------------------------------------------------------------------------
+// Broadcast the message (reachability prover usually will do it quicker but nevertheless
+//------------------------------------------------------------------------------
+addr.sin_family      = AF_INET;
+addr.sin_port        = htons (PORT);
+addr.sin_addr.s_addr = htonl (BROADCAST_IP);
+memset (addr.sin_zero, '\0', sizeof (addr.sin_zero));
+
+printf ("start broadcasting the UDP_MSG...\n");
+if ((numb_of_sent_bytes = sendto (udp_sk, udp_msg, strlen (udp_msg), 0,
+                                  (struct sockaddr*)(&addr), sizeof (addr))) == -1)
+        HANDLE_ERROR ("udp sendto");
+printf ("broadcasted %d bytes: \"%s\"\n\n", numb_of_sent_bytes, udp_msg);
 //------------------------------------------------------------------------------
 // Make a thread to accept incoming connections
 //------------------------------------------------------------------------------
@@ -244,19 +261,19 @@ printf ("All tasks have been sent!\n\n");
 // Create and bind UDP sockets to receive messages from solvers
 for (i = 0; i < numb_of_connected_solvers; i++)
         {
-        addr_size = sizeof (addr);
-        if (getsockname (arr_of_accepted_solvers[i].tcp_sk, (struct sockaddr*)&addr, &addr_size))
-                HANDLE_ERROR ("getsockname tcp_sk");
-
-        arr_of_solver_testers[i].ip       = addr.sin_addr.s_addr;
+        //d arr_of_solver_testers[i].ip       = addr.sin_addr.s_addr;
 
         if ((arr_of_solver_testers[i].udp_sk = socket (PF_INET, SOCK_DGRAM, 0)) == -1)
                 HANDLE_ERROR ("udp_sk socket");
         printf ("udp_sk has been created!\n");
         //----------
+        addr_size = sizeof (addr);
+        if (getsockname (arr_of_accepted_solvers[i].tcp_sk, (struct sockaddr*)&addr, &addr_size))
+                HANDLE_ERROR ("getsockname tcp_sk");
+
         addr.sin_family      = AF_INET;
         addr.sin_port        = START_PORT + i;
-        addr.sin_addr.s_addr = arr_of_solver_testers[i].ip;
+        addr.sin_addr.s_addr = addr.sin_addr.s_addr;
         memset (addr.sin_zero, '\0', sizeof (addr.sin_zero));
 
         if (bind (arr_of_solver_testers[i].udp_sk, (struct sockaddr*)(&addr), sizeof (addr)) == -1)
@@ -273,6 +290,7 @@ pthread_t reachability_of_solver_tester_thr_id = 0;
 struct reach_of_solv_test_arg reach_of_solv_test_arg = {0};
 reach_of_solv_test_arg.numb_of_connected_solvers = numb_of_connected_solvers;
 reach_of_solv_test_arg.arr_of_solver_testers     = arr_of_solver_testers;
+reach_of_solv_test_arg.arr_of_if_res_received    = arr_of_if_res_received;
 
 if ((ret_val = pthread_create (&reachability_of_solver_tester_thr_id,
                                NULL,
@@ -287,28 +305,78 @@ if ((ret_val = pthread_create (&reachability_of_solver_tester_thr_id,
 //------------------------------------------------------------------------------
 printf ("Waiting for %d partial result%s:\n", numb_of_connected_solvers,
                                               (numb_of_connected_solvers == 1) ? ""  : "s");
+
+
+start_of_receiving_res_routine:
+
+max_tcp_sk = 0;
+FD_ZERO (&rfds);
 for (i = 0; i < numb_of_connected_solvers; i++)
         {
-        numb_of_recv_bytes = 0;
-        do
+        if (arr_of_if_res_received[i] == 0)
                 {
-                ret_val = 0;
-                if ((ret_val = recv (arr_of_accepted_solvers[i].tcp_sk,
-                                     &partial_result + numb_of_recv_bytes,
-                                     sizeof (partial_result) - numb_of_recv_bytes, 0)) == -1)
-                        HANDLE_ERROR ("recv partial_result");
-                if (ret_val == 0)
-                        {
-                        printf ("\nConnection to solver №%d lost!\n", i);
-                        printf ("terminating program...\n");
-                        exit   (EXIT_FAILURE);
-                        }
-                numb_of_recv_bytes += ret_val;
+                FD_SET (arr_of_accepted_solvers[i].tcp_sk, &rfds);
+
+                if (arr_of_accepted_solvers[i].tcp_sk > max_tcp_sk)
+                        max_tcp_sk = arr_of_accepted_solvers[i].tcp_sk;
                 }
-        while (numb_of_recv_bytes != sizeof (partial_result));
-        printf ("received partial result from solver №%d, addr: %s\n", i, inet_ntoa (arr_of_accepted_solvers[i].addr.sin_addr));
-        general_result += partial_result;
         }
+
+if ((numb_of_ready_fds = select (max_tcp_sk + 1, &rfds, NULL, NULL, NULL)) == -1) // NULL timeout => indefinitely
+        HANDLE_ERROR ("select on receiving results");
+else if (numb_of_ready_fds == 0)
+        assert (!"Should never came here!"); // because of NULL timeout
+
+for (i = 0; i < numb_of_connected_solvers; i++)
+        {
+        if (FD_ISSET (arr_of_accepted_solvers[i].tcp_sk, &rfds) != 0)
+                {
+                numb_of_recv_bytes = 0;
+                do
+                        {
+                        ret_val = 0;
+                        if ((ret_val = recv (arr_of_accepted_solvers[i].tcp_sk,
+                                             &partial_result + numb_of_recv_bytes,
+                                             sizeof (partial_result) - numb_of_recv_bytes, 0)) == -1)
+                                HANDLE_ERROR ("recv partial_result");
+                        if (ret_val == 0)
+                                {
+                                printf ("\nConnection to solver №%d lost!\n", i);
+                                printf ("terminating program...\n");
+                                exit   (EXIT_FAILURE);
+                                }
+                        numb_of_recv_bytes += ret_val;
+                        }
+                while (numb_of_recv_bytes != sizeof (partial_result));
+                printf ("received partial result from solver №%d, addr: %s\n", i,
+                                        inet_ntoa (arr_of_accepted_solvers[i].addr.sin_addr));
+                //----------
+                if ((mutex_ret_val = pthread_mutex_lock (&mutex)) != 0)
+                        {
+                        printf ("Error in pthread_mutex_lock while receiving result, ret_val = %d\n", mutex_ret_val);
+                        exit (EXIT_FAILURE);
+                        }
+
+                arr_of_if_res_received[i] = 1;
+
+                if ((mutex_ret_val = pthread_mutex_unlock (&mutex)) != 0)
+                        {
+                        printf ("Error in pthread_mutex_unlock while receiving result, ret_val = %d\n", mutex_ret_val);
+                        exit (EXIT_FAILURE);
+                        }
+                //----------
+                general_result += partial_result;
+                numb_of_res_received += 1;
+
+                numb_of_ready_fds -= 1;
+                if (numb_of_ready_fds == 0)
+                        break; // all, ready for now, results have been read
+                }
+        }
+
+if (numb_of_res_received != numb_of_connected_solvers)
+        goto start_of_receiving_res_routine;
+
 //----------
 // We do not need any solvers to be alive now
 if ((ret_val = pthread_cancel (reachability_of_solver_tester_thr_id)))

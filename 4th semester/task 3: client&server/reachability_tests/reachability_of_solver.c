@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <errno.h>
+#include <assert.h>
 
 #include <string.h>
 #include <pthread.h>
@@ -45,6 +46,8 @@
 #endif
 //------------------------------------------------------------------------------
 
+
+extern pthread_mutex_t mutex;
 
 //------------------------------------------------------------------------------
 // Prover
@@ -91,21 +94,27 @@ pthread_exit (NULL);
 //------------------------------------------------------------------------------
 void* reachability_of_solver_tester (void* reach_of_solv_test_arg_ptr)
 {
-int udp_sk = 0;
+int      udp_sk = 0;
+//d uint32_t ip = 0;
 
 int  numb_of_recv_bytes = 0;
 char udp_buf[sizeof (UDP_PROVE_SOLVER_REACHABILITY_MSG) + 1] = "\0";
 
-struct sockaddr_in tasker_addr = {0}, addr = {0};
+struct sockaddr_in tasker_addr = {0}; //d addr = {0};
 socklen_t          tasker_addr_size = 0;
 
 int i = 0;
 int is_first_recv = 0;
 
+int is_result_sent = 0;
+int mutex_ret_val  = 0;
+
 int numb_of_connected_solvers =
         ((struct reach_of_solv_test_arg*)reach_of_solv_test_arg_ptr)->numb_of_connected_solvers;
 struct solver_tester_info* arr_of_solver_testers =
         ((struct reach_of_solv_test_arg*)reach_of_solv_test_arg_ptr)->arr_of_solver_testers;
+int* arr_of_if_res_received =
+        ((struct reach_of_solv_test_arg*)reach_of_solv_test_arg_ptr)->arr_of_if_res_received;
 
 while (1)
         {
@@ -116,6 +125,7 @@ while (1)
                 //printf ("testing solver reachability: recvfrom...\n");
 
                 udp_sk = arr_of_solver_testers[i].udp_sk;
+                //d ip     = arr_of_solver_testers[i].ip;
                 is_first_recv = 1;
 
                 do
@@ -133,10 +143,41 @@ while (1)
                                 {
                                 if (is_first_recv == 1)
                                         {
+                                        //----------
+                                        if ((mutex_ret_val = pthread_mutex_lock (&mutex)) != 0)
+                                                {
+                                                printf ("Error in pthread_mutex_lock while checking result, ret_val = %d\n",
+                                                                                                                mutex_ret_val);
+                                                exit (EXIT_FAILURE);
+                                                }
+
+                                        is_result_sent = arr_of_if_res_received[i];
+
+                                        if ((mutex_ret_val = pthread_mutex_unlock (&mutex)) != 0)
+                                                {
+                                                printf ("Error in pthread_mutex_unlock while checking result, ret_val = %d\n",
+                                                                                                                mutex_ret_val);
+                                                exit (EXIT_FAILURE);
+                                                }
+                                        //----------
+                                        // Network is down
+                                        if (is_result_sent == 0)
+                                                {
+                                                printf ("\nLost connection with solver on port %d (proven by tester 1)!\n",
+                                                                                                                START_PORT + i);
+                                                printf ("Terminating the program...\n");
+                                                exit   (EXIT_FAILURE);
+                                                }
+                                        // solver ended calculation, exited the program and
+                                        // because of that stopped sending reachability messages
+                                        else
+                                                break;
+                                        }
+
+                                        /*
                                         addr.sin_family      = AF_INET;
                                         addr.sin_port        = htons (PORT);
-                                        #define BROADCAST_IP 0xffffffff
-                                        addr.sin_addr.s_addr = htonl (BROADCAST_IP);
+                                        addr.sin_addr.s_addr = ip;
                                         memset (addr.sin_zero, '\0', sizeof (addr.sin_zero));
 
                                         if ((sendto (udp_sk, "test", strlen ("test"), 0,
@@ -151,19 +192,17 @@ while (1)
                                         printf ("Terminating the program...\n");
                                         exit   (EXIT_FAILURE);
                                         }
+                                                */
                                 else
+                                        // we just have read all the data
                                         break;
                                 }
-                        // solver closed the connection
+                        // for TCP: solver closed the connection, for UDP received NULL sized msg(?)
                         else if (numb_of_recv_bytes == 0)
                                 {
                                 printf ("NULL!\n");
+                                assert (!"Should never get here!");
                                 break;
-                                /*
-                                printf ("\nLost connection with solver (proven by tester 2)!\n");
-                                printf ("Terminating the program...\n");
-                                exit   (EXIT_FAILURE);
-                                */
                                 }
 
                         //udp_buf[numb_of_recv_bytes] = '\0';
