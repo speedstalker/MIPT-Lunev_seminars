@@ -15,6 +15,9 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
+#include "../reachability_tests/reachability_of_solver.h"
+#include "../reachability_tests/reachability_of_tasker.h"
+
 
 //------------------------------------------------------------------------------
 // Error handling macroses
@@ -45,16 +48,10 @@
 //------------------------------------------------------------------------------
 
 #define UDP_MSG                                 "Is there anybody out there?"
-#define UDP_PROVE_TASKER_REACHABILITY_MSG       "Tasker is reachable!"
-#define UDP_PROVE_SOLVER_REACHABILITY_MSG       "Solver is reachable!"
 
-#define PROVE_TEST_PERIOD        5 // in sec
-#define PROVE_SLEEP_PERIOD       1 // in sec
 #define MAX_WAIT_FOR_TASK_TIME  10 // in sec
 
-#define PORT            1234
-#define UDP_PORT        1235
-#define START_PORT      1236
+#define PORT 1234
 
 #define f(x) (x)
 #define FINENESS (0.000001)
@@ -79,23 +76,14 @@ static inline long double simpsons_rule_formula  (long double left_end, long dou
 void*                     simpsons_rule_integral (void* thread_numb);
 
 
-void* reachability_of_tasker_tester (void* udp_sk_ptr);
-void* reachability_of_solver_prover (void* reach_of_solv_prov_arg_ptr);
-
-struct reach_of_solv_prov_arg
-        {
-        int udp_sk;
-        uint16_t tcp_port;
-        int my_numb;
-        struct sockaddr_in tasker_addr;
-        };
-
-
+//----------
 struct solver_task
         {
         int my_numb;
         int numb_of_connected_solvers;
         };
+//----------
+
 
 int main (int argc, char* argv[])
 {
@@ -105,15 +93,15 @@ int ret_val = 0;
 char *str = NULL, *endptr = NULL;
 long numb_of_threads = 0;
 //----------
-int udp_sk = 0;
+int  udp_sk = 0;
 char udp_buf[sizeof (UDP_MSG) + 1] = "\0";
 
 int numb_of_recv_bytes = 0;
 //----------
 struct sockaddr_in addr = {0}, tasker_addr = {0};
-socklen_t addr_size = 0, tasker_addr_size = 0;
+socklen_t          tasker_addr_size = 0;
 //----------
-int tcp_sk = 0;
+int                tcp_sk = 0;
 struct solver_task my_task = {0};
 //----------
 general_data_t* general_data = NULL;
@@ -176,7 +164,7 @@ printf ("packet is %d bytes long\n", numb_of_recv_bytes);
 udp_buf[numb_of_recv_bytes] = '\0';
 printf ("packet contains: \"%s\"\n\n", udp_buf);
 //------------------------------------------------------------------------------
-// Create a TCP socket and connect to tasker
+// Create a TCP socket and connect to the tasker
 //------------------------------------------------------------------------------
 if ((tcp_sk = socket (PF_INET, SOCK_STREAM, 0)) == -1)
         HANDLE_ERROR ("tcp_sk socket");
@@ -206,7 +194,7 @@ if ((ret_val = select (tcp_sk + 1, &rfds, NULL, NULL, &tv)) == -1)
         HANDLE_ERROR ("select on task waiting");
 else if (ret_val == 0)
         {
-        printf ("\nLost connection with tasker (proven by select tester)!\n");
+        printf ("\nLost connection with the tasker (proven by select tester)!\n");
         printf ("Terminating the program...\n");
         exit   (EXIT_FAILURE);
         }
@@ -221,7 +209,7 @@ do
                 HANDLE_ERROR ("recv solver_task");
         if (ret_val == 0)
                 {
-                printf ("\nConnection to tasker lost!\n");
+                printf ("\nConnection to the tasker lost!\n");
                 printf ("terminating the program...\n");
                 exit   (EXIT_FAILURE);
                 }
@@ -237,72 +225,31 @@ printf ("My number is %d of total %d solver%s.\n\n", my_task.my_numb,
 // Make a thread to prove reachability of solver
 //------------------------------------------------------------------------------
 pthread_t reachability_of_solver_prover_thr_id = 0;
-pthread_attr_t thread_attr;
-
-if ((ret_val = pthread_attr_init (&thread_attr)))
-        {
-        printf ("Error in pthread_attr_init for solver reachability: ret_val = %d\n", ret_val);
-        exit (EXIT_FAILURE);
-        }
-if ((ret_val = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_JOINABLE)))
-        {
-        printf ("Error in pthread_attr_setdetachstate for solver reachability: ret_val = %d\n", ret_val);
-        exit (EXIT_FAILURE);
-        }
 
 struct reach_of_solv_prov_arg reach_of_solv_prov_arg = {0};
 reach_of_solv_prov_arg.udp_sk      = udp_sk;
-
-addr_size = sizeof (addr);
-if (getsockname (tcp_sk, (struct sockaddr*)&addr, &addr_size))
-        HANDLE_ERROR ("getsockname tcp_sk");
-reach_of_solv_prov_arg.tcp_port    = addr.sin_port;
-
 reach_of_solv_prov_arg.my_numb     = my_task.my_numb;
 reach_of_solv_prov_arg.tasker_addr = tasker_addr;
 
 if ((ret_val = pthread_create (&reachability_of_solver_prover_thr_id,
-                               &thread_attr,
+                               NULL,
                                reachability_of_solver_prover,
                                &reach_of_solv_prov_arg)))
         {
         printf ("Error in pthread_create for solver reachability: ret_val = %d\n", ret_val);
         exit (EXIT_FAILURE);
         }
-
-if ((ret_val = pthread_attr_destroy (&thread_attr)))
-        {
-        printf ("Error in pthread_attr_destroy for solver reachability: ret_val = %d\n", ret_val);
-        exit (EXIT_FAILURE);
-        }
 //------------------------------------------------------------------------------
-// Make a thread to test reachability of tasker
+// Make a thread to test reachability of the tasker
 //------------------------------------------------------------------------------
 pthread_t reachability_of_tasker_tester_thr_id = 0;
 
-if ((ret_val = pthread_attr_init (&thread_attr)))
-        {
-        printf ("Error in pthread_attr_init for tasker reachability: ret_val = %d\n", ret_val);
-        exit (EXIT_FAILURE);
-        }
-if ((ret_val = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_JOINABLE)))
-        {
-        printf ("Error in pthread_attr_setdetachstate for tasker reachability: ret_val = %d\n", ret_val);
-        exit (EXIT_FAILURE);
-        }
-
 if ((ret_val = pthread_create (&reachability_of_tasker_tester_thr_id,
-                               &thread_attr,
+                               NULL,
                                reachability_of_tasker_tester,
                                &udp_sk)))
         {
-        printf ("Error in pthread_create for tasker reachability: ret_val = %d\n", ret_val);
-        exit (EXIT_FAILURE);
-        }
-
-if ((ret_val = pthread_attr_destroy (&thread_attr)))
-        {
-        printf ("Error in pthread_attr_destroy for tasker reachability: ret_val = %d\n", ret_val);
+        printf ("Error in pthread_create for the tasker reachability: ret_val = %d\n", ret_val);
         exit (EXIT_FAILURE);
         }
 //------------------------------------------------------------------------------
@@ -338,20 +285,9 @@ for (i = 0; i < numb_of_threads; i++)
 //------------------------------------------------------------------------------
 pthread_t      thread_ids[numb_of_threads];
 
-if ((ret_val = pthread_attr_init (&thread_attr)))
-        {
-        printf ("Error in pthread_attr_init: ret_val = %d\n", ret_val);
-        exit (EXIT_FAILURE);
-        }
-if ((ret_val = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_JOINABLE)))
-        {
-        printf ("Error in pthread_attr_setdetachstate: ret_val = %d\n", ret_val);
-        exit (EXIT_FAILURE);
-        }
-
 for (i = 0; i < numb_of_threads; i++)
         if ((ret_val = pthread_create (&thread_ids[i],
-                                       &thread_attr,
+                                       NULL,
                                        simpsons_rule_integral,
                                        (general_data->arr_of_thread_numbs + i))))
                 {
@@ -359,12 +295,6 @@ for (i = 0; i < numb_of_threads; i++)
                 exit (EXIT_FAILURE);
                 }
 printf ("Started calculating...\n");
-
-if ((ret_val = pthread_attr_destroy (&thread_attr)))
-        {
-        printf ("Error in pthread_attr_destroy: ret_val = %d\n", ret_val);
-        exit (EXIT_FAILURE);
-        }
 
 for (i = 0; i < numb_of_threads; i++)
         if ((ret_val = pthread_join (thread_ids[i], NULL)))
@@ -381,7 +311,7 @@ for (i = 0; i < numb_of_threads; i++)
 
 printf ("my result = %Lf\n\n", result);
 //------------------------------------------------------------------------------
-// Send my result to tasker
+// Send my result to the tasker
 //------------------------------------------------------------------------------
 printf ("Started sending the result...\n");
 numb_of_sent_bytes = 0;
@@ -395,7 +325,7 @@ do
         numb_of_sent_bytes += ret_val;
         }
 while (numb_of_sent_bytes != sizeof (result));
-printf ("result has been sent to the tasker!\n\n");
+printf ("result has been sent to the the tasker!\n\n");
 //------------------------------------------------------------------------------
 
 
@@ -405,16 +335,16 @@ printf ("result has been sent to the tasker!\n\n");
 free (general_data); general_data = NULL;
 
 //----------
-// Cancel tasker reachability tester
+// Cancel the tasker reachability tester
 if ((ret_val = pthread_cancel (reachability_of_tasker_tester_thr_id)))
         {
-        printf ("Error in pthread_cancel for tasker reachability: ret_val = %d\n", ret_val);
+        printf ("Error in pthread_cancel for the tasker reachability: ret_val = %d\n", ret_val);
         exit (EXIT_FAILURE);
         }
 
 if ((ret_val = pthread_join (reachability_of_tasker_tester_thr_id, NULL)))
         {
-        printf ("Error in pthread_join for tasker reachability: ret_val = %d\n", ret_val);
+        printf ("Error in pthread_join for the tasker reachability: ret_val = %d\n", ret_val);
         exit (EXIT_FAILURE);
         }
 //----------
@@ -481,109 +411,4 @@ static inline long double simpsons_rule_formula (long double left_end, long doub
 {
 return ((right_end - left_end)/6 * (f(left_end) + 4*f((left_end + right_end)/2) + f(right_end)));
 }
-
-
-void* reachability_of_tasker_tester (void* udp_sk_ptr)
-{
-int udp_sk = *(int*)udp_sk_ptr;
-int numb_of_recv_bytes = 0;
-
-char udp_buf[sizeof (UDP_MSG) + 1] = "\0";
-struct sockaddr_in tasker_addr = {0};
-socklen_t tasker_addr_size = 0;
-
-int ret_val = 0;
-int is_first_recv = 0;
-
-
-if ((ret_val = fcntl (udp_sk, F_SETFL, O_NONBLOCK)) == -1)
-        HANDLE_ERROR ("fcntl udp_sk O_NONBLOCK");
-
-while (1)
-        {
-        // printf ("testing tasker reachability: recvfrom...\n");
-
-        sleep (PROVE_TEST_PERIOD);
-        is_first_recv = 1;
-
-        do
-                {
-                tasker_addr_size = sizeof (tasker_addr);
-
-                numb_of_recv_bytes = recvfrom (udp_sk, udp_buf, sizeof (UDP_PROVE_TASKER_REACHABILITY_MSG), 0,
-                                                (struct sockaddr*)(&tasker_addr), &tasker_addr_size);
-
-                // some error
-                if ((numb_of_recv_bytes == -1) && (errno != EAGAIN) && (errno != EWOULDBLOCK))
-                        HANDLE_ERROR ("recvfrom testing tasker reachability");
-                // nothing to read
-                else if ((numb_of_recv_bytes == -1) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))
-                        {
-                        if (is_first_recv == 1)
-                                {
-                                printf ("\nLost connection with tasker (proven by tester 1)!\n");
-                                printf ("Terminating the program...\n");
-                                exit   (EXIT_FAILURE);
-                                }
-                        else
-                                break;
-                        }
-                // tasker closed the connection
-                else if (numb_of_recv_bytes == 0)
-                        {
-                        printf ("\nLost connection with tasker (proven by tester 2)!\n");
-                        printf ("Terminating the program...\n");
-                        exit   (EXIT_FAILURE);
-                        }
-
-                // udp_buf[numb_of_recv_bytes] = '\0';
-                // printf ("packet contains: \"%s\"\n\n", udp_buf);
-
-                is_first_recv = 0;
-                }
-        while (numb_of_recv_bytes > 0);
-        }
-
-printf ("Should never get here!\n");
-pthread_exit (NULL);
-}
-
-void* reachability_of_solver_prover (void* reach_of_solv_prov_arg_ptr)
-{
-char udp_prove_msg[] = UDP_PROVE_SOLVER_REACHABILITY_MSG;
-int numb_of_sent_bytes = 0;
-
-struct sockaddr_in tasker_addr = ((struct reach_of_solv_prov_arg*)reach_of_solv_prov_arg_ptr)->tasker_addr;
-int                udp_sk      = ((struct reach_of_solv_prov_arg*)reach_of_solv_prov_arg_ptr)->udp_sk;
-int                my_numb     = ((struct reach_of_solv_prov_arg*)reach_of_solv_prov_arg_ptr)->my_numb;
-
-struct sockaddr_in addr = {0};
-
-addr.sin_family      = AF_INET;
-addr.sin_port        = START_PORT + my_numb; //tcp_port; //htons (UDP_PORT);
-addr.sin_addr.s_addr = tasker_addr.sin_addr.s_addr;
-memset (addr.sin_zero, '\0', sizeof (addr.sin_zero));
-
-printf ("start sending the UDP_PROVE_SOLVER_REACHABILITY_MSG on port %d...\n", START_PORT + my_numb);
-
-while (1)
-        {
-        numb_of_sent_bytes = sendto (udp_sk, udp_prove_msg, strlen (udp_prove_msg), 0,
-                                                  (struct sockaddr*)(&addr), sizeof (addr));
-        // some error
-        if ((numb_of_sent_bytes == -1) && (errno != EBADF))
-                HANDLE_ERROR ("udp sendto");
-        // sk has been closed before cancel() called
-        else if ((numb_of_sent_bytes == -1) && (errno == EBADF))
-                pthread_exit (NULL);
-
-        //printf ("sent %d bytes: \"%s\"\n\n", numb_of_sent_bytes, udp_prove_msg);
-
-        sleep (PROVE_SLEEP_PERIOD);
-        }
-
-printf ("Should never get here!\n");
-pthread_exit (NULL);
-}
-
 
