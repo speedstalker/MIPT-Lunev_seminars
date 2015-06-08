@@ -44,15 +44,15 @@
 #endif
 //------------------------------------------------------------------------------
 
-#define UDP_MSG                                 "Is there anybody out there?"
+#define PORT            1234
+#define BROADCAST_IP    0xffffffff
+
+#define UDP_MSG "Is there anybody out there?"
 
 #define BACKLOG          20
 #define MAX_SOLVER_NUMB  BACKLOG
 
 #define WAITING_FOR_CONNECTIONS_PERIOD  4 // in sec
-
-#define PORT            1234
-#define BROADCAST_IP    0xffffffff
 
 
 //----------

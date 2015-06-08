@@ -2,7 +2,7 @@ CC              =  gcc
 CFLAGS          = -Wall -g -O0 -pthread
 LIBS            = -lm
 
-SOURCES         = $(EXECUTABLE).c ../reachability_tests/reachability_of_solver.c ../reachability_tests/reachability_of_tasker.c
+SOURCES         = $(EXECUTABLE).c ../reachability_tests/reachability_of_solver.c ../reachability_tests/reachability_of_tasker.c part_of_simp_int.c
 OBJECTS         = $(SOURCES:.c=.o)
 EXECUTABLE      = solver
 
