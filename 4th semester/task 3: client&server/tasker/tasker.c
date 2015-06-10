@@ -20,6 +20,8 @@
 #include "../reachability_tests/reachability_of_tasker.h"
 #include "../reachability_tests/reachability_of_solver.h"
 
+#include "../color_output/color_output.h"
+
 
 //------------------------------------------------------------------------------
 // Error handling macroses
@@ -57,7 +59,8 @@
 #define BACKLOG          20
 #define MAX_SOLVER_NUMB  BACKLOG
 
-#define WAITING_FOR_CONNECTIONS_PERIOD  4 // in sec
+#define WAITING_FOR_CONNECTIONS_PERIOD     4 // in sec
+#define MAX_WAIT_FOR_NUMB_OF_THREADS_TIME  2 // in sec
 
 
 //----------
@@ -66,6 +69,7 @@ struct accepted_solver_info
         int                tcp_sk;
         struct sockaddr_in addr;
         socklen_t          addr_size;
+        int                numb_of_threads;
         };
 
 struct accept_func_arg
@@ -81,6 +85,9 @@ struct solver_task
         {
         int your_numb;
         int numb_of_connected_solvers;
+
+        int your_numb_of_thread_to_start_with;
+        int total_numb_of_threads;
         };
 //----------
 
@@ -106,12 +113,19 @@ socklen_t          addr_size = 0;
 int tcp_sk = 0;
 
 fd_set rfds;
-int max_tcp_sk = 0;
+struct timeval tv;
+
+int max_tcp_sk        = 0;
 int numb_of_ready_fds = 0;
 //----------
 struct accept_func_arg      accept_func_arg = {0};
 int                         numb_of_connected_solvers = 0;
+int                         total_numb_of_threads     = 0;
 struct accepted_solver_info arr_of_accepted_solvers[MAX_SOLVER_NUMB] = { {0} };
+
+long temp_numb_of_threads = 0;
+
+
 int arr_of_if_res_received[MAX_SOLVER_NUMB] = {0};
 int numb_of_res_received = 0;
 
@@ -135,7 +149,7 @@ if (argc != 1)
 //------------------------------------------------------------------------------
 if ((tcp_sk = socket (PF_INET, SOCK_STREAM, 0)) == -1)
         HANDLE_ERROR ("tcp_sk socket");
-printf ("tcp_sk has been created!\n");
+printf (COLOR_BLUE "tcp_sk has been created!\n");
 //----------
 // to avoid 'already in use' messages
 if (setsockopt (tcp_sk, SOL_SOCKET, SO_REUSEADDR, &true, sizeof (true)) == -1)
@@ -153,17 +167,17 @@ printf ("tcp_sk has been binded!\n");
 //----------
 if (listen (tcp_sk, BACKLOG) == -1)
         HANDLE_ERROR ("tcp_sk listen");
-printf ("tcp_sk is listening now!\n\n");
+printf ("tcp_sk is listening now!\n\n" COLOR_RESET);
 //------------------------------------------------------------------------------
 // Create an UDP socket
 //------------------------------------------------------------------------------
 if ((udp_sk = socket (PF_INET, SOCK_DGRAM, 0)) == -1)
         HANDLE_ERROR ("udp_sk socket");
-printf ("udp_sk has been created!\n");
+printf (COLOR_BLUE "udp_sk has been created!\n");
 //----------
 if (setsockopt (udp_sk, SOL_SOCKET, SO_BROADCAST, &true, sizeof (true)) == -1)
         HANDLE_ERROR ("udp_sk setsockopt BROADCAST");
-printf ("udp_sk has been set to BROADCAST mode!\n");
+printf ("udp_sk has been set to BROADCAST mode!\n" COLOR_RESET);
 //------------------------------------------------------------------------------
 // Make a thread to prove reachability of the tasker
 //------------------------------------------------------------------------------
@@ -174,22 +188,25 @@ if ((ret_val = pthread_create (&reachability_of_tasker_prover_thr_id,
                                reachability_of_tasker_prover,
                                &udp_sk)))
         {
-        printf ("Error in pthread_create for the tasker reachability: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_create for the tasker reachability: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
+
+printf (COLOR_CYAN "\nTasker reachability prover created!\n\n" COLOR_RESET);
 //------------------------------------------------------------------------------
-// Broadcast the message (reachability prover usually will do it quicker but nevertheless
+// Broadcast the message (reachability prover will sometimes do it quicker
+// but it does not matter, since prover broadcasts from the same socket/addr)
 //------------------------------------------------------------------------------
 addr.sin_family      = AF_INET;
 addr.sin_port        = htons (PORT);
 addr.sin_addr.s_addr = htonl (BROADCAST_IP);
 memset (addr.sin_zero, '\0', sizeof (addr.sin_zero));
 
-printf ("start broadcasting the UDP_MSG...\n");
+printf (COLOR_BLUE "start broadcasting the UDP_MSG...\n" COLOR_RESET);
 if ((numb_of_sent_bytes = sendto (udp_sk, udp_msg, strlen (udp_msg), 0,
                                   (struct sockaddr*)(&addr), sizeof (addr))) == -1)
         HANDLE_ERROR ("udp sendto");
-printf ("broadcasted %d bytes: \"%s\"\n\n", numb_of_sent_bytes, udp_msg);
+printf (COLOR_CYAN "broadcasted %d bytes: \"%s\"\n\n" COLOR_RESET, numb_of_sent_bytes, udp_msg);
 //------------------------------------------------------------------------------
 // Make a thread to accept incoming connections
 //------------------------------------------------------------------------------
@@ -203,7 +220,7 @@ if ((ret_val = pthread_create (&accept_thread_id,
                                accept_func,
                                &accept_func_arg)))
         {
-        printf ("Error in pthread_create: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_create: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
 //----------
@@ -213,31 +230,113 @@ sleep (WAITING_FOR_CONNECTIONS_PERIOD);
 ret_val = pthread_cancel (accept_thread_id);
 if ((ret_val != 0) && (ret_val != ESRCH))
         {
-        printf ("Error in pthread_cancel: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_cancel: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
 
 if ((ret_val = pthread_join (accept_thread_id, NULL)))
         {
-        printf ("Error in pthread_join: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_join: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
 //----------
 if (numb_of_connected_solvers == 0)
         {
-        printf ("There are no solvers available within a current timeout!\n");
-        printf ("Terminating program...\n");
+        printf (COLOR_RED "There are no solvers available within a current timeout!\n");
+        printf ("Terminating program...\n" COLOR_RESET);
         exit   (EXIT_FAILURE);
         }
-printf ("Ended accepting incoming connections,\n");
-printf ("%d connection%s ha%s been accepted!\n\n", numb_of_connected_solvers,
-                                                   (numb_of_connected_solvers == 1) ? ""  : "s",
-                                                   (numb_of_connected_solvers == 1) ? "s" : "ve");
+printf (COLOR_BLUE "Ended accepting incoming connections,\n");
+printf ("%d connection%s ha%s been accepted!\n\n" COLOR_RESET, numb_of_connected_solvers,
+                                                              (numb_of_connected_solvers == 1) ? ""  : "s",
+                                                              (numb_of_connected_solvers == 1) ? "s" : "ve");
+//------------------------------------------------------------------------------
+// Receive number of threads from each solver
+//------------------------------------------------------------------------------
+printf (COLOR_BLUE "Waiting for %d solver%s to send %s number of threads:\n" COLOR_RESET, numb_of_connected_solvers,
+                                              (numb_of_connected_solvers == 1) ? ""    : "s",
+                                              (numb_of_connected_solvers == 1) ? "its" : "their");
+numb_of_res_received = 0;
+
+
+start_of_receiving_numb_of_threads_routine:
+
+max_tcp_sk = 0;
+FD_ZERO (&rfds);
+for (i = 0; i < numb_of_connected_solvers; i++)
+        {
+        // correct numb_of_threads should be strictly positive number
+        if (arr_of_accepted_solvers[i].numb_of_threads == 0)
+                {
+                FD_SET (arr_of_accepted_solvers[i].tcp_sk, &rfds);
+
+                if (arr_of_accepted_solvers[i].tcp_sk > max_tcp_sk)
+                        max_tcp_sk = arr_of_accepted_solvers[i].tcp_sk;
+                }
+        }
+
+tv.tv_sec  = MAX_WAIT_FOR_NUMB_OF_THREADS_TIME;
+tv.tv_usec = 0;
+
+if ((numb_of_ready_fds = select (max_tcp_sk + 1, &rfds, NULL, NULL, &tv)) == -1)
+        HANDLE_ERROR ("select on receiving numb_of_threads of each solver");
+else if (numb_of_ready_fds == 0)
+        {
+        printf (COLOR_RED "Select on receiving numb_of_threads reach timeout!\n");
+        printf ("terminating program...\n" COLOR_RESET);
+        exit   (EXIT_FAILURE);
+        }
+
+for (i = 0; i < numb_of_connected_solvers; i++)
+        {
+        if (FD_ISSET (arr_of_accepted_solvers[i].tcp_sk, &rfds) != 0)
+                {
+                numb_of_recv_bytes   = 0;
+                temp_numb_of_threads = 0;
+                do
+                        {
+                        ret_val = 0;
+                        if ((ret_val = recv (arr_of_accepted_solvers[i].tcp_sk,
+                                             &temp_numb_of_threads + numb_of_recv_bytes,
+                                             sizeof (temp_numb_of_threads) - numb_of_recv_bytes, 0)) == -1)
+                                HANDLE_ERROR ("recv temp_numb_of_threads");
+                        if (ret_val == 0)
+                                {
+                                printf (COLOR_RED "\nError on solver №%d, recv returned 0 after passing the select!\n", i);
+                                printf ("terminating the program...\n" COLOR_RESET);
+                                exit   (EXIT_FAILURE);
+                                }
+                        numb_of_recv_bytes += ret_val;
+                        }
+                while (numb_of_recv_bytes != sizeof (temp_numb_of_threads));
+
+                printf (COLOR_CYAN "received from solver №%d its numb_of_threads = %ld, from addr: %s\n" COLOR_RESET,
+                                        i, temp_numb_of_threads, inet_ntoa (arr_of_accepted_solvers[i].addr.sin_addr));
+
+                arr_of_accepted_solvers[i].numb_of_threads = temp_numb_of_threads;
+
+                total_numb_of_threads += temp_numb_of_threads;
+                numb_of_res_received += 1; // number of solvers that sent their results
+
+                numb_of_ready_fds -= 1;
+                if (numb_of_ready_fds == 0)
+                        break; // all, ready for now, results have been read
+                }
+        }
+
+if (numb_of_res_received != numb_of_connected_solvers)
+        goto start_of_receiving_numb_of_threads_routine;
+
+printf (COLOR_BLUE "Tasker received numb_of_threads from all solvers!\n\n" COLOR_RESET);
 //------------------------------------------------------------------------------
 // Send info about tasks to each solver
 //------------------------------------------------------------------------------
-printf ("Started sending %d task%s:\n", numb_of_connected_solvers, (numb_of_connected_solvers == 1) ? ""  : "s");
+printf (COLOR_BLUE "Started sending %d task%s:\n" COLOR_RESET, numb_of_connected_solvers,
+                                                              (numb_of_connected_solvers == 1) ? ""  : "s");
 solver_task.numb_of_connected_solvers = numb_of_connected_solvers;
+solver_task.total_numb_of_threads     = total_numb_of_threads;
+
+solver_task.your_numb_of_thread_to_start_with = 0;
 for (i = 0; i < numb_of_connected_solvers; i++)
         {
         solver_task.your_numb = i;
@@ -247,25 +346,25 @@ for (i = 0; i < numb_of_connected_solvers; i++)
                 ret_val = 0;
                 if ((ret_val = send (arr_of_accepted_solvers[i].tcp_sk,
                                      &solver_task + numb_of_sent_bytes,
-                                     sizeof (struct solver_task) - numb_of_sent_bytes, 0)) == -1)
+                                     sizeof (solver_task) - numb_of_sent_bytes, 0)) == -1)
                         HANDLE_ERROR ("send solver_task");
                 numb_of_sent_bytes += ret_val;
                 }
-        while (numb_of_sent_bytes != sizeof (struct solver_task));
-        printf ("task №%d has been sent to %s\n", i, inet_ntoa (arr_of_accepted_solvers[i].addr.sin_addr));
+        while (numb_of_sent_bytes != sizeof (solver_task));
+        printf (COLOR_CYAN "task №%d has been sent to %s\n" COLOR_RESET, i, inet_ntoa (arr_of_accepted_solvers[i].addr.sin_addr));
+
+        solver_task.your_numb_of_thread_to_start_with += arr_of_accepted_solvers[i].numb_of_threads;
         }
-printf ("All tasks have been sent!\n\n");
+printf (COLOR_BLUE "All tasks have been sent!\n\n" COLOR_RESET);
 //------------------------------------------------------------------------------
 // Make a thread to test reachability of all solvers
 //------------------------------------------------------------------------------
 // Create and bind UDP sockets to receive messages from solvers
 for (i = 0; i < numb_of_connected_solvers; i++)
         {
-        //d arr_of_solver_testers[i].ip       = addr.sin_addr.s_addr;
-
         if ((arr_of_solver_testers[i].udp_sk = socket (PF_INET, SOCK_DGRAM, 0)) == -1)
                 HANDLE_ERROR ("udp_sk socket");
-        printf ("udp_sk has been created!\n");
+        printf (COLOR_BLUE "udp_sk for testing solver №%d has been created!\n" COLOR_RESET, i);
         //----------
         addr_size = sizeof (addr);
         if (getsockname (arr_of_accepted_solvers[i].tcp_sk, (struct sockaddr*)&addr, &addr_size))
@@ -297,15 +396,18 @@ if ((ret_val = pthread_create (&reachability_of_solver_tester_thr_id,
                                reachability_of_solver_tester,
                                &reach_of_solv_test_arg)))
         {
-        printf ("Error in pthread_create for solver reachability: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_create for solver reachability: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
+
+printf (COLOR_CYAN "\nSolvers reachability tester created!\n\n" COLOR_RESET);
 //------------------------------------------------------------------------------
 // Receive answers from solvers
 //------------------------------------------------------------------------------
-printf ("Waiting for %d partial result%s:\n", numb_of_connected_solvers,
+printf (COLOR_BLUE "Waiting for %d partial result%s:\n" COLOR_RESET, numb_of_connected_solvers,
                                               (numb_of_connected_solvers == 1) ? ""  : "s");
-
+numb_of_res_received = 0;
+general_result = 0;
 
 start_of_receiving_res_routine:
 
@@ -332,6 +434,7 @@ for (i = 0; i < numb_of_connected_solvers; i++)
         if (FD_ISSET (arr_of_accepted_solvers[i].tcp_sk, &rfds) != 0)
                 {
                 numb_of_recv_bytes = 0;
+                partial_result     = 0;
                 do
                         {
                         ret_val = 0;
@@ -341,19 +444,21 @@ for (i = 0; i < numb_of_connected_solvers; i++)
                                 HANDLE_ERROR ("recv partial_result");
                         if (ret_val == 0)
                                 {
-                                printf ("\nConnection to solver №%d lost!\n", i);
-                                printf ("terminating program...\n");
+                                printf (COLOR_RED "\nError on solver №%d, recv returned 0 after passing the select "
+                                                                        "on receiving the partial_result!\n", i);
+                                printf ("terminating the program...\n" COLOR_RESET);
                                 exit   (EXIT_FAILURE);
                                 }
                         numb_of_recv_bytes += ret_val;
                         }
                 while (numb_of_recv_bytes != sizeof (partial_result));
-                printf ("received partial result from solver №%d, addr: %s\n", i,
+                printf (COLOR_CYAN "received partial_result = %Lf, from solver №%d, addr: %s\n" COLOR_RESET, partial_result, i,
                                         inet_ntoa (arr_of_accepted_solvers[i].addr.sin_addr));
                 //----------
                 if ((mutex_ret_val = pthread_mutex_lock (&mutex)) != 0)
                         {
-                        printf ("Error in pthread_mutex_lock while receiving result, ret_val = %d\n", mutex_ret_val);
+                        printf (COLOR_RED "Error in pthread_mutex_lock while receiving result, ret_val = %d\n" COLOR_RESET,
+                                                                                                                mutex_ret_val);
                         exit (EXIT_FAILURE);
                         }
 
@@ -361,7 +466,8 @@ for (i = 0; i < numb_of_connected_solvers; i++)
 
                 if ((mutex_ret_val = pthread_mutex_unlock (&mutex)) != 0)
                         {
-                        printf ("Error in pthread_mutex_unlock while receiving result, ret_val = %d\n", mutex_ret_val);
+                        printf (COLOR_RED "Error in pthread_mutex_unlock while receiving result, ret_val = %d\n" COLOR_RESET,
+                                                                                                                mutex_ret_val);
                         exit (EXIT_FAILURE);
                         }
                 //----------
@@ -381,19 +487,19 @@ if (numb_of_res_received != numb_of_connected_solvers)
 // We do not need any solvers to be alive now
 if ((ret_val = pthread_cancel (reachability_of_solver_tester_thr_id)))
         {
-        printf ("Error in pthread_cancel for solver reachability: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_cancel for solver reachability: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
 
 if ((ret_val = pthread_join (reachability_of_solver_tester_thr_id, NULL)))
         {
-        printf ("Error in pthread_join for solver reachability: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_join for solver reachability: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
 //----------
-printf ("All partial results have been received!\n");
+printf (COLOR_BLUE "All partial results have been received!\n" COLOR_RESET);
 
-printf ("\nGeneral result = %Lf\n", general_result);
+printf (COLOR_CYAN "\nGeneral result = %Lf\n" COLOR_RESET, general_result);
 //------------------------------------------------------------------------------
 
 
@@ -410,13 +516,13 @@ for (i = 0; i < MAX_SOLVER_NUMB; i++)
 //----------
 if ((ret_val = pthread_cancel (reachability_of_tasker_prover_thr_id)))
         {
-        printf ("Error in pthread_cancel for the tasker reachability: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_cancel for the tasker reachability: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
 
 if ((ret_val = pthread_join (reachability_of_tasker_prover_thr_id, NULL)))
         {
-        printf ("Error in pthread_join for the tasker reachability: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_join for the tasker reachability: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
 //----------
@@ -443,7 +549,7 @@ socklen_t          solver_addr_size = 0;
 //------------------------------------------------------------------------------
 // Accept incoming connections
 //------------------------------------------------------------------------------
-printf ("Waiting for incoming connections...\n");
+printf (COLOR_BLUE "Waiting for incoming connections...\n" COLOR_RESET);
 for (i = 0; i < MAX_SOLVER_NUMB; i++)
         {
         solver_addr_size = sizeof (solver_addr);
@@ -453,7 +559,7 @@ for (i = 0; i < MAX_SOLVER_NUMB; i++)
         arr_of_accepted_solvers[i].addr_size = solver_addr_size;
 
         *numb_of_connected_solvers_ptr += 1;
-        printf ("connection from %s has been accepted!\n", inet_ntoa (solver_addr.sin_addr));
+        printf (COLOR_CYAN "connection from %s has been accepted!\n" COLOR_RESET, inet_ntoa (solver_addr.sin_addr));
         }
 //------------------------------------------------------------------------------
 

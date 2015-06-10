@@ -20,6 +20,8 @@
 #include "../reachability_tests/reachability_of_solver.h"
 #include "../reachability_tests/reachability_of_tasker.h"
 
+#include "../color_output/color_output.h"
+
 #include "part_of_simp_int.h"
 
 
@@ -63,6 +65,9 @@ struct solver_task
         {
         int my_numb;
         int numb_of_connected_solvers;
+
+        int my_numb_of_thread_to_start_with;
+        int total_numb_of_threads;
         };
 //----------
 
@@ -126,7 +131,7 @@ if (numb_of_threads <= 0)
 //------------------------------------------------------------------------------
 if ((udp_sk = socket (PF_INET, SOCK_DGRAM, 0)) == -1)
         HANDLE_ERROR ("udp_sk socket");
-printf ("udp_sk has been created!\n");
+printf (COLOR_BLUE "udp_sk has been created!\n");
 //----------
 addr.sin_family      = AF_INET;
 addr.sin_port        = htons (PORT);
@@ -138,15 +143,15 @@ if (bind (udp_sk, (struct sockaddr*)(&addr), sizeof (addr)) == -1)
 printf ("udp_sk has been binded!\n\n");
 //----------
 tasker_addr_size = sizeof (tasker_addr);
-printf ("Waiting to recvfrom...\n");
+printf ("Waiting to recvfrom...\n" COLOR_RESET);
 if ((numb_of_recv_bytes = recvfrom (udp_sk, udp_buf, sizeof (UDP_MSG), 0,
                                     (struct sockaddr*)(&tasker_addr), &tasker_addr_size)) == -1)
         HANDLE_ERROR ("udp recvfrom");
 
-printf ("got UDP packet from %s\n", inet_ntoa (tasker_addr.sin_addr));
-printf ("packet is %d bytes long\n", numb_of_recv_bytes);
+printf (COLOR_CYAN "got UDP packet from %s\n" COLOR_RESET, inet_ntoa (tasker_addr.sin_addr));
+printf (COLOR_BLUE "packet is %d bytes long\n", numb_of_recv_bytes);
 udp_buf[numb_of_recv_bytes] = '\0';
-printf ("packet contains: \"%s\"\n\n", udp_buf);
+printf ("packet contains: " COLOR_CYAN "\"%s\"\n\n" COLOR_RESET, udp_buf);
 //------------------------------------------------------------------------------
 // Make a thread to test reachability of the tasker
 //------------------------------------------------------------------------------
@@ -157,29 +162,47 @@ if ((ret_val = pthread_create (&reachability_of_tasker_tester_thr_id,
                                reachability_of_tasker_tester,
                                &udp_sk)))
         {
-        printf ("Error in pthread_create for the tasker reachability: ret_val = %d\n", ret_val);
-        exit (EXIT_FAILURE);
+        printf (COLOR_RED "Error in pthread_create for the tasker reachability: ret_val = %d\n" COLOR_RESET, ret_val);
+        exit   (EXIT_FAILURE);
         }
+
+printf (COLOR_CYAN "Tasker reachability tester created!\n\n" COLOR_RESET);
 //------------------------------------------------------------------------------
 // Create a TCP socket and connect to the tasker
 //------------------------------------------------------------------------------
 if ((tcp_sk = socket (PF_INET, SOCK_STREAM, 0)) == -1)
         HANDLE_ERROR ("tcp_sk socket");
-printf ("tcp_sk has been created!\n");
+printf (COLOR_BLUE "tcp_sk has been created!\n" COLOR_RESET);
 //----------
 addr.sin_family      = AF_INET;
 addr.sin_port        = htons (PORT);
 addr.sin_addr.s_addr = tasker_addr.sin_addr.s_addr;
 memset (addr.sin_zero, '\0', sizeof (addr.sin_zero));
 
-printf ("trying to connect to %s on port %d\n", inet_ntoa(addr.sin_addr), PORT);
+printf (COLOR_CYAN "trying to connect to %s on port %d\n" COLOR_RESET, inet_ntoa(addr.sin_addr), PORT);
 if (connect (tcp_sk, (struct sockaddr*)&addr, sizeof (addr)) == -1)
         HANDLE_ERROR ("tcp_sk connect");
-printf ("tcp_sk has been connected to %s!\n\n", inet_ntoa (tasker_addr.sin_addr));
+printf (COLOR_BLUE "tcp_sk has been connected to %s!\n\n" COLOR_RESET, inet_ntoa (tasker_addr.sin_addr));
+//------------------------------------------------------------------------------
+// Send my numb_of_threads to the tasker
+//------------------------------------------------------------------------------
+printf (COLOR_BLUE "Started sending my " COLOR_CYAN "numb_of_threads = %ld...\n" COLOR_RESET, numb_of_threads);
+numb_of_sent_bytes = 0;
+do
+        {
+        ret_val = 0;
+        if ((ret_val = send (tcp_sk,
+                             &numb_of_threads + numb_of_sent_bytes,
+                             sizeof (numb_of_threads) - numb_of_sent_bytes, 0)) == -1)
+                HANDLE_ERROR ("send numb_of_threads");
+        numb_of_sent_bytes += ret_val;
+        }
+while (numb_of_sent_bytes != sizeof (numb_of_threads));
+printf (COLOR_BLUE "numb_of_threads has been sent to the the tasker!\n\n" COLOR_RESET);
 //------------------------------------------------------------------------------
 // Receive the task from the tasker
 //------------------------------------------------------------------------------
-printf ("Waiting for the task...\n");
+printf (COLOR_BLUE "Waiting for the task...\n");
 fd_set rfds; FD_ZERO (&rfds);
 FD_SET (tcp_sk, &rfds);
 
@@ -191,8 +214,8 @@ if ((ret_val = select (tcp_sk + 1, &rfds, NULL, NULL, &tv)) == -1)
         HANDLE_ERROR ("select on task waiting");
 else if (ret_val == 0)
         {
-        printf ("\nLost connection with the tasker (proven by select tester)!\n");
-        printf ("Terminating the program...\n");
+        printf (COLOR_RED "\nLost connection with the tasker (proven by select tester)!\n");
+        printf ("Terminating the program...\n" COLOR_RESET);
         exit   (EXIT_FAILURE);
         }
 
@@ -206,17 +229,20 @@ do
                 HANDLE_ERROR ("recv solver_task");
         if (ret_val == 0)
                 {
-                printf ("\nConnection to the tasker lost!\n");
-                printf ("terminating the program...\n");
+                printf (COLOR_RED "\nConnection to the tasker lost!\n");
+                printf ("terminating the program...\n" COLOR_RESET);
                 exit   (EXIT_FAILURE);
                 }
         numb_of_recv_bytes += ret_val;
         }
 while (numb_of_recv_bytes != sizeof (struct solver_task));
 
-printf ("task has been received!\n");
-printf ("My number is %d of total %d solver%s.\n\n", my_task.my_numb,
+printf ("task has been received!\n" COLOR_RESET);
+printf (COLOR_CYAN "My number is %d of total %d solver%s.\n", my_task.my_numb,
                                                      my_task.numb_of_connected_solvers,
+                                                     (my_task.numb_of_connected_solvers == 1) ? "" : "s");
+printf ("I am starting with the thread №%d, of total %d thread%s\n\n" COLOR_RESET, my_task.my_numb_of_thread_to_start_with,
+                                                     my_task.total_numb_of_threads,
                                                      (my_task.numb_of_connected_solvers == 1) ? "" : "s");
 //------------------------------------------------------------------------------
 // Make a thread to prove reachability of solver
@@ -233,9 +259,11 @@ if ((ret_val = pthread_create (&reachability_of_solver_prover_thr_id,
                                reachability_of_solver_prover,
                                &reach_of_solv_prov_arg)))
         {
-        printf ("Error in pthread_create for solver reachability: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_create for solver reachability: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
+
+printf (COLOR_CYAN "Solver reachability prover created!\n\n" COLOR_RESET);
 //------------------------------------------------------------------------------
 
 //------------------------------------------------------------------------------
@@ -253,12 +281,14 @@ general_data->fineness        = FINENESS;
 if (my_task.my_numb == 0)
         general_data->from = FROM;
 else
-        general_data->from = (TO - FROM) / my_task.numb_of_connected_solvers * my_task.my_numb + FROM;
+        general_data->from = (TO - FROM) / my_task.total_numb_of_threads *
+                             my_task.my_numb_of_thread_to_start_with + FROM;
 
 if (my_task.my_numb == (my_task.numb_of_connected_solvers - 1))
         general_data->to = TO;
 else
-        general_data->to = (TO - FROM) / my_task.numb_of_connected_solvers * (my_task.my_numb + 1) + FROM;
+        general_data->to = (TO - FROM) / my_task.total_numb_of_threads *
+                           (my_task.my_numb_of_thread_to_start_with + numb_of_threads) + FROM;
 
 // (general_data + 1) points right behind the structure-header => to the first element of an array
 // then we just find out what type do pointer to the array member have
@@ -277,31 +307,31 @@ for (i = 0; i < numb_of_threads; i++)
                                        simpsons_rule_integral,
                                        (general_data->arr_of_thread_numbs + i))))
                 {
-                printf ("Error in pthread_create: ret_val = %d\n", ret_val);
+                printf (COLOR_RED "Error in pthread_create: ret_val = %d\n" COLOR_RESET, ret_val);
                 exit (EXIT_FAILURE);
                 }
-printf ("Started calculating...\n");
+printf (COLOR_BLUE "Started calculating...\n" COLOR_RESET);
 
 for (i = 0; i < numb_of_threads; i++)
         if ((ret_val = pthread_join (thread_ids[i], NULL)))
                 {
-                printf ("Error in pthread_join: ret_val = %d\n", ret_val);
+                printf (COLOR_RED "Error in pthread_join: ret_val = %d\n" COLOR_RESET, ret_val);
                 exit (EXIT_FAILURE);
                 }
-printf ("finished calculating!\n");
+printf (COLOR_BLUE "finished calculating!\n" COLOR_RESET);
 //------------------------------------------------------------------------------
 // if we came here - all threads have computed their parts
 //------------------------------------------------------------------------------
 for (i = 0; i < numb_of_threads; i++)
         result += general_data->arr_of_thread_numbs[i];
 
-printf ("my result = %Lf\n\n", result);
+printf (COLOR_CYAN "my result = %Lf\n\n" COLOR_RESET, result);
 //------------------------------------------------------------------------------
 
 //------------------------------------------------------------------------------
 // Send my result to the tasker
 //------------------------------------------------------------------------------
-printf ("Started sending the result...\n");
+printf (COLOR_BLUE "Started sending the result...\n");
 numb_of_sent_bytes = 0;
 do
         {
@@ -313,7 +343,7 @@ do
         numb_of_sent_bytes += ret_val;
         }
 while (numb_of_sent_bytes != sizeof (result));
-printf ("result has been sent to the the tasker!\n\n");
+printf (COLOR_CYAN "result has been sent to the the tasker!\n\n" COLOR_RESET);
 //------------------------------------------------------------------------------
 
 
@@ -326,13 +356,13 @@ free (general_data); general_data = NULL;
 // Cancel the tasker reachability tester
 if ((ret_val = pthread_cancel (reachability_of_tasker_tester_thr_id)))
         {
-        printf ("Error in pthread_cancel for the tasker reachability: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_cancel for the tasker reachability: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
 
 if ((ret_val = pthread_join (reachability_of_tasker_tester_thr_id, NULL)))
         {
-        printf ("Error in pthread_join for the tasker reachability: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_join for the tasker reachability: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
 //----------
@@ -345,13 +375,13 @@ close (udp_sk);
 ret_val = pthread_cancel (reachability_of_solver_prover_thr_id);
 if ((ret_val != 0) && (ret_val != ESRCH))
         {
-        printf ("Error in pthread_cancel for solver reachability: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_cancel for solver reachability: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
 
 if ((ret_val = pthread_join (reachability_of_solver_prover_thr_id, NULL)))
         {
-        printf ("Error in pthread_join for solver reachability: ret_val = %d\n", ret_val);
+        printf (COLOR_RED "Error in pthread_join for solver reachability: ret_val = %d\n" COLOR_RESET, ret_val);
         exit (EXIT_FAILURE);
         }
 //------------------------------------------------------------------------------
