@@ -83,6 +83,8 @@ char *str = NULL, *endptr = NULL;
 long numb_of_threads = 0;
 //----------
 int  udp_sk = 0;
+long true = 1;
+
 char udp_buf[sizeof (UDP_MSG) + 1] = "\0";
 
 int numb_of_recv_bytes = 0;
@@ -137,7 +139,12 @@ addr.sin_family      = AF_INET;
 addr.sin_port        = htons (PORT);
 addr.sin_addr.s_addr = htonl (INADDR_ANY);
 memset (addr.sin_zero, '\0', sizeof (addr.sin_zero));
-
+//----------
+// to be able to run multiple solvers on one computer
+if (setsockopt (udp_sk, SOL_SOCKET, /*SO_REUSEADDR |*/ SO_REUSEPORT, &true, sizeof (true)) == -1)
+        HANDLE_ERROR ("udp_sk setsockopt SO_REUSEPORT");
+printf ("udp_sk has been set to REUSEPORT mode!\n");
+//----------
 if (bind (udp_sk, (struct sockaddr*)(&addr), sizeof (addr)) == -1)
         HANDLE_ERROR ("udp_sk bind");
 printf ("udp_sk has been binded!\n\n");
